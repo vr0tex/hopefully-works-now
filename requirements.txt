@@ -4,4 +4,4 @@ python-dotenv==1.0.0
 Pillow
 supabase
 psutil
-audioop-lts
+
