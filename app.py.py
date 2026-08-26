@@ -2795,3 +2795,4 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"ERROR: Failed to start bot: {e}")
         raise
+
