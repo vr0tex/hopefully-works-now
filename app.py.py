@@ -268,7 +268,6 @@ async def set_bot_avatar_from_asset(bot):
 GAME_ROLE_MAP = {
     "ALS": 1500199051952656578,
     "AV": 1500198955940712468,
-    "UTD": 1505300013604147332,
     "AE": 1541834030717075457,
 }
 
@@ -877,7 +876,7 @@ class Emojis:
     INFO = "ℹ️"
     ARROW = "➔"
     LOCK = "🔒"
-    ALS = AC = UTD = AV = BL = ARX = ASTD = AOL = AE = "🎮"
+    ALS = AC = AV = BL = ARX = ASTD = AOL = AE = "🎮"
     CLAIM = UNCLAIM = REMIND = COMPLETE = LINK = PLUS = DIAMOND = GOAL = STATUS = "🔹"
 
     @classmethod
@@ -885,12 +884,11 @@ class Emojis:
         game_emoji_aliases = {
             'ALS': {'als', 'animelaststand'},
             'AV': {'av', 'animevanguards'},
-            'UTD': {'utd', 'utdx', 'universaltowerdefense'},
             'AE': {'ae', 'animeexpeditions'},
         }
         keys = [
             'CARRY', 'VOUCH', 'STAFF', 'TICKET', 'SUCCESS', 'WAITING', 'GAME', 'USER', 'INFO', 'ARROW', 'LOCK',
-            'ALS', 'AC', 'UTD', 'AV', 'BL', 'ARX', 'ASTD', 'AOL', 'AE',
+            'ALS', 'AC', 'AV', 'BL', 'ARX', 'ASTD', 'AOL', 'AE',
             'CLAIM', 'UNCLAIM', 'REMIND', 'COMPLETE', 'LINK', 'PLUS', 'DIAMOND', 'GOAL', 'STATUS'
         ]
         
@@ -915,7 +913,7 @@ class Emojis:
                 else:
                     # Fallback to a generic emoji instead of :p:
                     generic_fallbacks = {
-                        'ALS': "🎮", 'AC': "🎮", 'UTD': "🎮", 'AV': "🎮", 'BL': "🎮", 'ARX': "🎮", 'ASTD': "🎮", 'AOL': "🎮", 'AE': "🎮",
+                        'ALS': "🎮", 'AC': "🎮", 'AV': "🎮", 'BL': "🎮", 'ARX': "🎮", 'ASTD': "🎮", 'AOL': "🎮", 'AE': "🎮",
                         'CARRY': "⚔️", 'VOUCH': "⭐", 'STAFF': "🛡️", 'TICKET': "🎫", 'SUCCESS': "✅", 'WAITING': "⏳", 'GAME': "🎮", 'USER': "👤", 'INFO': "ℹ️", 'ARROW': "➔", 'LOCK': "🔒",
                         'CLAIM': "🔹", 'UNCLAIM': "🔹", 'REMIND': "🔹", 'COMPLETE': "✅", 'LINK': "🔗", 'PLUS': "➕", 'DIAMOND': "💎", 'GOAL': "🎯", 'STATUS': "📊"
                     }
@@ -1086,7 +1084,7 @@ class TicketControlView(discord.ui.View):
         has_role = any(role.id == specific_role_id for role in interaction.user.roles)
         
         if not has_role:
-            allowed_roles = ["als helper", "av helper", "utd helper", "ae helper"]
+            allowed_roles = ["als helper", "av helper", "ae helper"]
             has_role = any(role.name.lower() in allowed_roles for role in interaction.user.roles)
         
         if not has_role and not interaction.user.guild_permissions.administrator:
@@ -1374,7 +1372,6 @@ class ParadoxTicketView(discord.ui.View):
         options = [
             discord.SelectOption(label="Anime Last Stand (ALS)", emoji=Emojis.ALS, value="ALS"),
             discord.SelectOption(label="Anime Vanguards (AV)", emoji=Emojis.AV, value="AV"),
-            discord.SelectOption(label="Universal Tower Defense (UTD)", emoji=Emojis.UTD, value="UTD"),
             discord.SelectOption(label="Anime Expeditions (AE)", emoji=Emojis.AE, value="AE"),
         ]
         self.select = discord.ui.Select(
@@ -1420,7 +1417,6 @@ class ParadoxTicketView(discord.ui.View):
             game_image_names = {
                 "ALS": "als.webp",
                 "AV": "av.png",
-                "UTD": "utd.jpg",
                 "AE": "ae.jpg",
             }
             game_image_name = game_image_names.get(game_id)
@@ -1449,7 +1445,6 @@ class HelperApplicationView(discord.ui.View):
         options = [
             discord.SelectOption(label="Anime Last Stand (ALS)", emoji=Emojis.ALS, value="ALS"),
             discord.SelectOption(label="Anime Vanguards (AV)", emoji=Emojis.AV, value="AV"),
-            discord.SelectOption(label="Universal Tower Defense (UTD)", emoji=Emojis.UTD, value="UTD"),
             discord.SelectOption(label="Anime Expeditions (AE)", emoji=Emojis.AE, value="AE"),
         ]
         self.select = discord.ui.Select(
@@ -1464,7 +1459,7 @@ class HelperApplicationView(discord.ui.View):
         game_id = self.select.values[0]
         game_name = [opt.label for opt in self.select.options if opt.value == game_id][0]
         
-        if game_id in ["ALS", "AV", "UTD", "AE"]:
+        if game_id in ["ALS", "AV", "AE"]:
             # Start Application Flow
             await interaction.response.send_message(f"✅ **Application Started!** Please check your DMs to proceed.", ephemeral=True)
             asyncio.create_task(start_application(interaction.user, game_id, game_name))
@@ -1492,7 +1487,6 @@ class ApplicationReviewView(discord.ui.View):
         self.role_mapping = {
             "Anime Last Stand (ALS)": 1500199051952656578,
             "Anime Vanguards (AV)": 1500198955940712468,
-            "Universal Tower Defense (UTD)": 1505300013604147332,
             "Anime Expeditions (AE)": 1541834030717075457
         }
 
@@ -1690,13 +1684,6 @@ async def start_application(user: discord.Member, game_id: str, game_name: str):
             {"text": "5. What floor number are you on for all the elements?", "type": "text"},
             {"text": "6. Are you able to carry to carry Cid raid?", "type": "yesno"},
         ]
-    elif game_id == "UTD":
-        questions = [
-            {"text": "1. How much time can you spend helping a day?", "type": "text"},
-            {"text": "2. Do you have all content unlocked? (story, raids, legend stages, etc.)", "type": "yesno"},
-            {"text": "3. Are you lvl 50? (to have all 6 unit slots)", "type": "yesno"},
-            {"text": "4. Can you solo most of the game content?", "type": "yesno"},
-        ]
     elif game_id == "AE":
         questions = [
             {"text": "1. Can you successfully solo high-level Raids or late-game Expeditions stages on your own?", "type": "yesno"},
@@ -1880,7 +1867,6 @@ ONLINE_HELPERS_CONFIG_FILE = os.path.join(BASE_DIR, "online_helpers_config.json"
 GAME_HELPER_ROLES = {
     "ALS": 1500199147859476604,
     "AV": 1500198955940712468,
-    "UTD": 1505300013604147332,
     "AE": 1541834030717075457,
 }
 
@@ -1951,14 +1937,12 @@ async def create_online_helpers_embed(guild: discord.Guild):
     game_emojis = {
         "ALS": "⚔️",
         "AV": "🎯",
-        "UTD": "🗼",
         "AE": "🌟"
     }
     
     game_names = {
         "ALS": "Anime Last Stand",
         "AV": "Anime Vanguards",
-        "UTD": "Universal Tower Defense",
         "AE": "Anime Expeditions"
     }
     
@@ -1971,7 +1955,7 @@ async def create_online_helpers_embed(guild: discord.Guild):
         color=discord.Color.green()
     )
     
-    for game in ["ALS", "AV", "UTD", "AE"]:
+    for game in ["ALS", "AV", "AE"]:
         helpers = online_helpers.get(game, [])
         emoji = game_emojis.get(game, "•")
         name = game_names.get(game, game)
