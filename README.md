@@ -45,8 +45,19 @@ To find your IDs:
 ## Running the Bot
 
 ```bash
-python main.py
+python app.py.py
 ```
+
+### Deploying on Railway
+
+Railway uses the included `Procfile` to start the bot as a worker. Add these variables in the Railway service settings:
+
+- `DISCORD_TOKEN`
+- `CATEGORY_ID`
+- `STAFF_ROLE_ID`
+- `VOUCH_CHANNEL_ID`
+- `HELPER_CHANNEL_ID`
+- `SUPABASE_URL` and `SUPABASE_KEY` (optional)
 
 ## Commands
 
@@ -65,8 +76,8 @@ python main.py
 
 ```
 .
-├── main.py             # Main bot code (use this)
-├── bot.py              # Legacy bot code (backup)
+├── app.py.py           # Main bot code (use this)
+├── app.py (2).py       # Legacy bot code (backup)
 ├── requirements.txt    # Python dependencies
 ├── .env.example        # Example environment variables
 ├── .gitignore          # Git ignore rules
