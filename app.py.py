@@ -2115,7 +2115,7 @@ async def set_bot_avatar_from_asset(bot):
 GAME_ROLE_MAP = {
     "ALS": 1500199051952656578,
     "AV": 1500198955940712468,
->>>>>>> 5cbcdb9 (Convert carry to slash command and update images)
+    "UTD": 1505300013604147332,
     "AE": 1541834030717075457,
 }
 
