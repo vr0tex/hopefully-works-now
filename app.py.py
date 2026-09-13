@@ -896,7 +896,7 @@ class Emojis:
     INFO = "ℹ️"
     ARROW = "➔"
     LOCK = "🔒"
-    ALS = AC = AV = BL = ARX = ASTD = AOL = AE = "🎮"
+    ALS = AC = UTD = AV = BL = ARX = ASTD = AOL = AE = DQR = "🎮"
     CLAIM = UNCLAIM = REMIND = COMPLETE = LINK = PLUS = DIAMOND = GOAL = STATUS = "🔹"
 
     @classmethod
@@ -905,10 +905,11 @@ class Emojis:
             'ALS': {'als', 'animelaststand'},
             'AV': {'av', 'animevanguards'},
             'AE': {'ae', 'animeexpeditions'},
+            'DQR': {'dqr', 'dungeonquest', 'dungeonquestreborn', 'dungoenquest'},
         }
         keys = [
             'CARRY', 'VOUCH', 'STAFF', 'TICKET', 'SUCCESS', 'WAITING', 'GAME', 'USER', 'INFO', 'ARROW', 'LOCK',
-            'ALS', 'AC', 'AV', 'BL', 'ARX', 'ASTD', 'AOL', 'AE',
+            'ALS', 'AC', 'UTD', 'AV', 'BL', 'ARX', 'ASTD', 'AOL', 'AE', 'DQR',
             'CLAIM', 'UNCLAIM', 'REMIND', 'COMPLETE', 'LINK', 'PLUS', 'DIAMOND', 'GOAL', 'STATUS'
         ]
         
@@ -1393,6 +1394,7 @@ class ParadoxTicketView(discord.ui.View):
             discord.SelectOption(label="Anime Last Stand (ALS)", emoji=Emojis.ALS, value="ALS"),
             discord.SelectOption(label="Anime Vanguards (AV)", emoji=Emojis.AV, value="AV"),
             discord.SelectOption(label="Anime Expeditions (AE)", emoji=Emojis.AE, value="AE"),
+              discord.SelectOption(label="Dungeon Quest Reborn (DQR)", emoji=Emojis.DQR, value="DQR"),
         ]
         self.select = discord.ui.Select(
             custom_id="paradox_selector",
@@ -1466,6 +1468,7 @@ class HelperApplicationView(discord.ui.View):
             discord.SelectOption(label="Anime Last Stand (ALS)", emoji=Emojis.ALS, value="ALS"),
             discord.SelectOption(label="Anime Vanguards (AV)", emoji=Emojis.AV, value="AV"),
             discord.SelectOption(label="Anime Expeditions (AE)", emoji=Emojis.AE, value="AE"),
+              discord.SelectOption(label="Dungeon Quest Reborn (DQR)", emoji=Emojis.DQR, value="DQR"),
         ]
         self.select = discord.ui.Select(
             custom_id="helper_selector",
@@ -1479,7 +1482,7 @@ class HelperApplicationView(discord.ui.View):
         game_id = self.select.values[0]
         game_name = [opt.label for opt in self.select.options if opt.value == game_id][0]
         
-        if game_id in ["ALS", "AV", "AE"]:
+        if game_id in ["ALS", "AV", "UTD", "AE", "DQR"]:
             # Start Application Flow
             await interaction.response.send_message(f"✅ **Application Started!** Please check your DMs to proceed.", ephemeral=True)
             asyncio.create_task(start_application(interaction.user, game_id, game_name))
@@ -1507,7 +1510,8 @@ class ApplicationReviewView(discord.ui.View):
         self.role_mapping = {
             "Anime Last Stand (ALS)": 1500199051952656578,
             "Anime Vanguards (AV)": 1500198955940712468,
-            "Anime Expeditions (AE)": 1541834030717075457
+            "Anime Expeditions (AE)": 1541834030717075457,
+              "Dungeon Quest Reborn (DQR)": 1548723005679599706
         }
 
     def parse_data(self, interaction: discord.Interaction):
@@ -1711,6 +1715,15 @@ async def start_application(user: discord.Member, game_id: str, game_name: str):
             {"text": "3. Do you actively use and understand advanced mechanics like multi-lane map positioning, Stat Anvils, and Research Tree progression to maximize your unit damage?", "type": "yesno"},
             {"text": "4. Can you clear challenge restrictions (such as no-money-unit runs or strict skull modifier trials) for end-game rewards?", "type": "yesno"},
             {"text": "5. Provide proof of your progress (e.g., screenshot showing a solo completion or your top-tier unit loadout).", "type": "image"},
+        ]
+    elif game_id == "DQR":
+        questions = [
+            {"text": "1. Why do you want to become a Helper specifically for Dungeon Quest Reborn?", "type": "text"},
+            {"text": "2. What are the benefits of running a dungeon on Hardcore Mode instead of normal difficulty?", "type": "text"},
+            {"text": "3. A beginner asks how to quickly boost their power to clear a tough dungeon. What advice do you give them?", "type": "text"},
+            {"text": "4. What level are you?", "type": "text"},
+            {"text": "5. Someone asks you to give them free items, rare gear, or admin privileges. How do you respond?", "type": "text"},
+            {"text": "6. Briefly explain how item rarities and progression work.", "type": "text"},
         ]
     else:
         return
@@ -2724,7 +2737,7 @@ class Emojis:
     INFO = "ℹ️"
     ARROW = "➔"
     LOCK = "🔒"
-    ALS = AC = UTD = AV = BL = ARX = ASTD = AOL = AE = "🎮"
+    ALS = AC = UTD = AV = BL = ARX = ASTD = AOL = AE = DQR = "🎮"
     CLAIM = UNCLAIM = REMIND = COMPLETE = LINK = PLUS = DIAMOND = GOAL = STATUS = "🔹"
 
     @classmethod
@@ -2734,10 +2747,11 @@ class Emojis:
             'AV': {'av', 'animevanguards'},
             'UTD': {'utd', 'utdx', 'universaltowerdefense'},
             'AE': {'ae', 'animeexpeditions'},
+            'DQR': {'dqr', 'dungeonquest', 'dungeonquestreborn', 'dungoenquest'},
         }
         keys = [
             'CARRY', 'VOUCH', 'STAFF', 'TICKET', 'SUCCESS', 'WAITING', 'GAME', 'USER', 'INFO', 'ARROW', 'LOCK',
-            'ALS', 'AC', 'UTD', 'AV', 'BL', 'ARX', 'ASTD', 'AOL', 'AE',
+            'ALS', 'AC', 'UTD', 'AV', 'BL', 'ARX', 'ASTD', 'AOL', 'AE', 'DQR',
             'CLAIM', 'UNCLAIM', 'REMIND', 'COMPLETE', 'LINK', 'PLUS', 'DIAMOND', 'GOAL', 'STATUS'
         ]
         
@@ -3223,6 +3237,7 @@ class ParadoxTicketView(discord.ui.View):
             discord.SelectOption(label="Anime Vanguards (AV)", emoji=Emojis.AV, value="AV"),
             discord.SelectOption(label="Universal Tower Defense (UTD)", emoji=Emojis.UTD, value="UTD"),
             discord.SelectOption(label="Anime Expeditions (AE)", emoji=Emojis.AE, value="AE"),
+              discord.SelectOption(label="Dungeon Quest Reborn (DQR)", emoji=Emojis.DQR, value="DQR"),
         ]
         self.select = discord.ui.Select(
             custom_id="paradox_selector",
@@ -3298,6 +3313,7 @@ class HelperApplicationView(discord.ui.View):
             discord.SelectOption(label="Anime Vanguards (AV)", emoji=Emojis.AV, value="AV"),
             discord.SelectOption(label="Universal Tower Defense (UTD)", emoji=Emojis.UTD, value="UTD"),
             discord.SelectOption(label="Anime Expeditions (AE)", emoji=Emojis.AE, value="AE"),
+              discord.SelectOption(label="Dungeon Quest Reborn (DQR)", emoji=Emojis.DQR, value="DQR"),
         ]
         self.select = discord.ui.Select(
             custom_id="helper_selector",
@@ -3311,7 +3327,7 @@ class HelperApplicationView(discord.ui.View):
         game_id = self.select.values[0]
         game_name = [opt.label for opt in self.select.options if opt.value == game_id][0]
         
-        if game_id in ["ALS", "AV", "UTD", "AE"]:
+        if game_id in ["ALS", "AV", "UTD", "AE", "DQR"]:
             # Start Application Flow
             await interaction.response.send_message(f"✅ **Application Started!** Please check your DMs to proceed.", ephemeral=True)
             asyncio.create_task(start_application(interaction.user, game_id, game_name))
@@ -3340,7 +3356,8 @@ class ApplicationReviewView(discord.ui.View):
             "Anime Last Stand (ALS)": 1500199051952656578,
             "Anime Vanguards (AV)": 1500198955940712468,
             "Universal Tower Defense (UTD)": 1505300013604147332,
-            "Anime Expeditions (AE)": 1541834030717075457
+            "Anime Expeditions (AE)": 1541834030717075457,
+              "Dungeon Quest Reborn (DQR)": 1548723005679599706
         }
 
     def parse_data(self, interaction: discord.Interaction):
@@ -3551,6 +3568,15 @@ async def start_application(user: discord.Member, game_id: str, game_name: str):
             {"text": "3. Do you actively use and understand advanced mechanics like multi-lane map positioning, Stat Anvils, and Research Tree progression to maximize your unit damage?", "type": "yesno"},
             {"text": "4. Can you clear challenge restrictions (such as no-money-unit runs or strict skull modifier trials) for end-game rewards?", "type": "yesno"},
             {"text": "5. Provide proof of your progress (e.g., screenshot showing a solo completion or your top-tier unit loadout).", "type": "image"},
+        ]
+    elif game_id == "DQR":
+        questions = [
+            {"text": "1. Why do you want to become a Helper specifically for Dungeon Quest Reborn?", "type": "text"},
+            {"text": "2. What are the benefits of running a dungeon on Hardcore Mode instead of normal difficulty?", "type": "text"},
+            {"text": "3. A beginner asks how to quickly boost their power to clear a tough dungeon. What advice do you give them?", "type": "text"},
+            {"text": "4. What level are you?", "type": "text"},
+            {"text": "5. Someone asks you to give them free items, rare gear, or admin privileges. How do you respond?", "type": "text"},
+            {"text": "6. Briefly explain how item rarities and progression work.", "type": "text"},
         ]
     else:
         return
