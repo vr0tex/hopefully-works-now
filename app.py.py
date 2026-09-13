@@ -896,7 +896,7 @@ class Emojis:
     INFO = "ℹ️"
     ARROW = "➔"
     LOCK = "🔒"
-    ALS = AC = UTD = AV = BL = ARX = ASTD = AOL = AE = DQR = "🎮"
+    ALS = AC = AV = BL = ARX = ASTD = AOL = AE = DQR = "🎮"
     CLAIM = UNCLAIM = REMIND = COMPLETE = LINK = PLUS = DIAMOND = GOAL = STATUS = "🔹"
 
     @classmethod
@@ -909,7 +909,7 @@ class Emojis:
         }
         keys = [
             'CARRY', 'VOUCH', 'STAFF', 'TICKET', 'SUCCESS', 'WAITING', 'GAME', 'USER', 'INFO', 'ARROW', 'LOCK',
-            'ALS', 'AC', 'UTD', 'AV', 'BL', 'ARX', 'ASTD', 'AOL', 'AE', 'DQR',
+            'ALS', 'AC', 'AV', 'BL', 'ARX', 'ASTD', 'AOL', 'AE', 'DQR',
             'CLAIM', 'UNCLAIM', 'REMIND', 'COMPLETE', 'LINK', 'PLUS', 'DIAMOND', 'GOAL', 'STATUS'
         ]
         
@@ -1371,7 +1371,7 @@ class JoinMethodView(discord.ui.View):
         
         # Use Paradox logo as thumbnail
         ticket_files = []
-        logo_path = get_asset_path("setup_header.png")
+        logo_path = get_asset_path("paradox img.png")
         if os.path.exists(logo_path):
             logo_file = discord.File(logo_path, filename="paradox_logo.png")
             embed.set_thumbnail(url="attachment://paradox_logo.png")
@@ -1483,7 +1483,7 @@ class HelperApplicationView(discord.ui.View):
         game_id = self.select.values[0]
         game_name = [opt.label for opt in self.select.options if opt.value == game_id][0]
         
-        if game_id in ["ALS", "AV", "UTD", "AE", "DQR"]:
+        if game_id in ["ALS", "AV", "AE", "DQR"]:
             # Start Application Flow
             await interaction.response.send_message(f"✅ **Application Started!** Please check your DMs to proceed.", ephemeral=True)
             asyncio.create_task(start_application(interaction.user, game_id, game_name))
@@ -2366,20 +2366,6 @@ def restore_vouches_from_backup(backup_path):
     return {"bonus_vouches": len(bonus_records), "vouch_records": len(vouch_records)}
 
 
-def get_vouch_rank(total_vouches):
-    ranks = [
-        (500, "Legendary"),
-        (250, "Elite"),
-        (100, "Diamond"),
-        (50, "Platinum"),
-        (25, "Gold"),
-        (10, "Bronze"),
-    ]
-    for threshold, rank in ranks:
-        if total_vouches >= threshold:
-            return rank
-    return "Unranked"
-
 def get_total_vouches(user_id, minimum_total=0):
     total_vouches = get_bonus_vouches(user_id)["total"]
 
@@ -2738,7 +2724,7 @@ class Emojis:
     INFO = "ℹ️"
     ARROW = "➔"
     LOCK = "🔒"
-    ALS = AC = UTD = AV = BL = ARX = ASTD = AOL = AE = DQR = "🎮"
+    ALS = AC = AV = BL = ARX = ASTD = AOL = AE = DQR = "🎮"
     CLAIM = UNCLAIM = REMIND = COMPLETE = LINK = PLUS = DIAMOND = GOAL = STATUS = "🔹"
 
     @classmethod
@@ -2746,13 +2732,12 @@ class Emojis:
         game_emoji_aliases = {
             'ALS': {'als', 'animelaststand'},
             'AV': {'av', 'animevanguards'},
-            'UTD': {'utd', 'utdx', 'universaltowerdefense'},
             'AE': {'ae', 'animeexpeditions'},
             'DQR': {'dqr', 'dungeonquest', 'dungeonquestreborn', 'dungoenquest'},
         }
         keys = [
             'CARRY', 'VOUCH', 'STAFF', 'TICKET', 'SUCCESS', 'WAITING', 'GAME', 'USER', 'INFO', 'ARROW', 'LOCK',
-            'ALS', 'AC', 'UTD', 'AV', 'BL', 'ARX', 'ASTD', 'AOL', 'AE', 'DQR',
+            'ALS', 'AC', 'AV', 'BL', 'ARX', 'ASTD', 'AOL', 'AE', 'DQR',
             'CLAIM', 'UNCLAIM', 'REMIND', 'COMPLETE', 'LINK', 'PLUS', 'DIAMOND', 'GOAL', 'STATUS'
         ]
         
@@ -2777,7 +2762,7 @@ class Emojis:
                 else:
                     # Fallback to a generic emoji instead of :p:
                     generic_fallbacks = {
-                        'ALS': "🎮", 'AC': "🎮", 'UTD': "🎮", 'AV': "🎮", 'BL': "🎮", 'ARX': "🎮", 'ASTD': "🎮", 'AOL': "🎮", 'AE': "🎮", 'DQR': "🎮",
+                        'ALS': "🎮", 'AC': "🎮", 'AV': "🎮", 'BL': "🎮", 'ARX': "🎮", 'ASTD': "🎮", 'AOL': "🎮", 'AE': "🎮", 'DQR': "🎮",
                         'CARRY': "⚔️", 'VOUCH': "⭐", 'STAFF': "🛡️", 'TICKET': "🎫", 'SUCCESS': "✅", 'WAITING': "⏳", 'GAME': "🎮", 'USER': "👤", 'INFO': "ℹ️", 'ARROW': "➔", 'LOCK': "🔒",
                         'CLAIM': "🔹", 'UNCLAIM': "🔹", 'REMIND': "🔹", 'COMPLETE': "✅", 'LINK': "🔗", 'PLUS': "➕", 'DIAMOND': "💎", 'GOAL': "🎯", 'STATUS': "📊"
                     }
@@ -2948,7 +2933,7 @@ class TicketControlView(discord.ui.View):
         has_role = any(role.id == specific_role_id for role in interaction.user.roles)
         
         if not has_role:
-            allowed_roles = ["als helper", "av helper", "utd helper", "ae helper", "dqr helper"]
+            allowed_roles = ["als helper", "av helper", "ae helper", "dqr helper"]
             has_role = any(role.name.lower() in allowed_roles for role in interaction.user.roles)
         
         if not has_role and not interaction.user.guild_permissions.administrator:
@@ -3214,7 +3199,7 @@ class JoinMethodView(discord.ui.View):
         
         # Use Paradox logo as thumbnail
         ticket_files = []
-        logo_path = get_asset_path("setup_header.png")
+        logo_path = get_asset_path("paradox img.png")
         if os.path.exists(logo_path):
             logo_file = discord.File(logo_path, filename="paradox_logo.png")
             embed.set_thumbnail(url="attachment://paradox_logo.png")
@@ -3236,7 +3221,6 @@ class ParadoxTicketView(discord.ui.View):
         options = [
             discord.SelectOption(label="Anime Last Stand (ALS)", emoji=Emojis.ALS, value="ALS"),
             discord.SelectOption(label="Anime Vanguards (AV)", emoji=Emojis.AV, value="AV"),
-            discord.SelectOption(label="Universal Tower Defense (UTD)", emoji=Emojis.UTD, value="UTD"),
             discord.SelectOption(label="Anime Expeditions (AE)", emoji=Emojis.AE, value="AE"),
               discord.SelectOption(label="Dungeon Quest Reborn (DQR)", emoji=Emojis.DQR, value="DQR"),
         ]
@@ -3283,7 +3267,6 @@ class ParadoxTicketView(discord.ui.View):
             game_image_names = {
                 "ALS": "als.webp",
                 "AV": "av.png",
-                "UTD": "utd.jpg",
                 "AE": "ae.jpg",
                 "DQR": "dqr.png",
             }
@@ -3313,7 +3296,6 @@ class HelperApplicationView(discord.ui.View):
         options = [
             discord.SelectOption(label="Anime Last Stand (ALS)", emoji=Emojis.ALS, value="ALS"),
             discord.SelectOption(label="Anime Vanguards (AV)", emoji=Emojis.AV, value="AV"),
-            discord.SelectOption(label="Universal Tower Defense (UTD)", emoji=Emojis.UTD, value="UTD"),
             discord.SelectOption(label="Anime Expeditions (AE)", emoji=Emojis.AE, value="AE"),
               discord.SelectOption(label="Dungeon Quest Reborn (DQR)", emoji=Emojis.DQR, value="DQR"),
         ]
@@ -3329,7 +3311,7 @@ class HelperApplicationView(discord.ui.View):
         game_id = self.select.values[0]
         game_name = [opt.label for opt in self.select.options if opt.value == game_id][0]
         
-        if game_id in ["ALS", "AV", "UTD", "AE", "DQR"]:
+        if game_id in ["ALS", "AV", "AE", "DQR"]:
             # Start Application Flow
             await interaction.response.send_message(f"✅ **Application Started!** Please check your DMs to proceed.", ephemeral=True)
             asyncio.create_task(start_application(interaction.user, game_id, game_name))
@@ -3357,7 +3339,6 @@ class ApplicationReviewView(discord.ui.View):
         self.role_mapping = {
             "Anime Last Stand (ALS)": 1500199051952656578,
             "Anime Vanguards (AV)": 1500198955940712468,
-            "Universal Tower Defense (UTD)": 1505300013604147332,
             "Anime Expeditions (AE)": 1541834030717075457,
               "Dungeon Quest Reborn (DQR)": 1548723005679599706
         }
@@ -3833,7 +3814,6 @@ async def create_online_helpers_embed(guild: discord.Guild):
     game_names = {
         "ALS": "Anime Last Stand",
         "AV": "Anime Vanguards",
-        "UTD": "Universal Tower Defense",
         "AE": "Anime Expeditions",
         "DQR": "Dungeon Quest Reborn"
     }
@@ -3847,7 +3827,7 @@ async def create_online_helpers_embed(guild: discord.Guild):
         color=discord.Color.green()
     )
     
-    for game in ["ALS", "AV", "UTD", "AE", "DQR"]:
+    for game in ["ALS", "AV", "AE", "DQR"]:
         helpers = online_helpers.get(game, [])
         emoji = game_emojis.get(game, "•")
         name = game_names.get(game, game)
@@ -4353,7 +4333,6 @@ async def setup(ctx):
         f"```diff\n"
         f"+ Anime Last Stand (ALS)\n"
         f"+ Anime Vanguards (AV)\n"
-        f"+ Universal Tower Defense (UTD)\n"
         f"+ Anime Expeditions (AE)\n"
         f"+ Dungeon Quest Reborn (DQR)\n"
         f"+ and many more soon...\n"
