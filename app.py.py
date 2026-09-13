@@ -934,7 +934,7 @@ class Emojis:
                 else:
                     # Fallback to a generic emoji instead of :p:
                     generic_fallbacks = {
-                        'ALS': "🎮", 'AC': "🎮", 'AV': "🎮", 'BL': "🎮", 'ARX': "🎮", 'ASTD': "🎮", 'AOL': "🎮", 'AE': "🎮",
+                        'ALS': "🎮", 'AC': "🎮", 'AV': "🎮", 'BL': "🎮", 'ARX': "🎮", 'ASTD': "🎮", 'AOL': "🎮", 'AE': "🎮", 'DQR': "🎮",
                         'CARRY': "⚔️", 'VOUCH': "⭐", 'STAFF': "🛡️", 'TICKET': "🎫", 'SUCCESS': "✅", 'WAITING': "⏳", 'GAME': "🎮", 'USER': "👤", 'INFO': "ℹ️", 'ARROW': "➔", 'LOCK': "🔒",
                         'CLAIM': "🔹", 'UNCLAIM': "🔹", 'REMIND': "🔹", 'COMPLETE': "✅", 'LINK': "🔗", 'PLUS': "➕", 'DIAMOND': "💎", 'GOAL': "🎯", 'STATUS': "📊"
                     }
@@ -1105,7 +1105,7 @@ class TicketControlView(discord.ui.View):
         has_role = any(role.id == specific_role_id for role in interaction.user.roles)
         
         if not has_role:
-            allowed_roles = ["als helper", "av helper", "ae helper"]
+            allowed_roles = ["als helper", "av helper", "ae helper", "dqr helper"]
             has_role = any(role.name.lower() in allowed_roles for role in interaction.user.roles)
         
         if not has_role and not interaction.user.guild_permissions.administrator:
@@ -1440,6 +1440,7 @@ class ParadoxTicketView(discord.ui.View):
                 "ALS": "als.webp",
                 "AV": "av.png",
                 "AE": "ae.jpg",
+                "DQR": "dqr.png",
             }
             game_image_name = game_image_names.get(game_id)
             game_image_path = get_asset_path(game_image_name) if game_image_name else None
@@ -2776,7 +2777,7 @@ class Emojis:
                 else:
                     # Fallback to a generic emoji instead of :p:
                     generic_fallbacks = {
-                        'ALS': "🎮", 'AC': "🎮", 'UTD': "🎮", 'AV': "🎮", 'BL': "🎮", 'ARX': "🎮", 'ASTD': "🎮", 'AOL': "🎮", 'AE': "🎮",
+                        'ALS': "🎮", 'AC': "🎮", 'UTD': "🎮", 'AV': "🎮", 'BL': "🎮", 'ARX': "🎮", 'ASTD': "🎮", 'AOL': "🎮", 'AE': "🎮", 'DQR': "🎮",
                         'CARRY': "⚔️", 'VOUCH': "⭐", 'STAFF': "🛡️", 'TICKET': "🎫", 'SUCCESS': "✅", 'WAITING': "⏳", 'GAME': "🎮", 'USER': "👤", 'INFO': "ℹ️", 'ARROW': "➔", 'LOCK': "🔒",
                         'CLAIM': "🔹", 'UNCLAIM': "🔹", 'REMIND': "🔹", 'COMPLETE': "✅", 'LINK': "🔗", 'PLUS': "➕", 'DIAMOND': "💎", 'GOAL': "🎯", 'STATUS': "📊"
                     }
@@ -2947,7 +2948,7 @@ class TicketControlView(discord.ui.View):
         has_role = any(role.id == specific_role_id for role in interaction.user.roles)
         
         if not has_role:
-            allowed_roles = ["als helper", "av helper", "utd helper", "ae helper"]
+            allowed_roles = ["als helper", "av helper", "utd helper", "ae helper", "dqr helper"]
             has_role = any(role.name.lower() in allowed_roles for role in interaction.user.roles)
         
         if not has_role and not interaction.user.guild_permissions.administrator:
@@ -3284,6 +3285,7 @@ class ParadoxTicketView(discord.ui.View):
                 "AV": "av.png",
                 "UTD": "utd.jpg",
                 "AE": "ae.jpg",
+                "DQR": "dqr.png",
             }
             game_image_name = game_image_names.get(game_id)
             game_image_path = get_asset_path(game_image_name) if game_image_name else None
@@ -3832,7 +3834,8 @@ async def create_online_helpers_embed(guild: discord.Guild):
         "ALS": "Anime Last Stand",
         "AV": "Anime Vanguards",
         "UTD": "Universal Tower Defense",
-        "AE": "Anime Expeditions"
+        "AE": "Anime Expeditions",
+        "DQR": "Dungeon Quest Reborn"
     }
     
     # Calculate total online helpers
@@ -3844,7 +3847,7 @@ async def create_online_helpers_embed(guild: discord.Guild):
         color=discord.Color.green()
     )
     
-    for game in ["ALS", "AV", "UTD", "AE"]:
+    for game in ["ALS", "AV", "UTD", "AE", "DQR"]:
         helpers = online_helpers.get(game, [])
         emoji = game_emojis.get(game, "•")
         name = game_names.get(game, game)
@@ -4352,6 +4355,7 @@ async def setup(ctx):
         f"+ Anime Vanguards (AV)\n"
         f"+ Universal Tower Defense (UTD)\n"
         f"+ Anime Expeditions (AE)\n"
+        f"+ Dungeon Quest Reborn (DQR)\n"
         f"+ and many more soon...\n"
         f"```\n"
         f"**| {Emojis.ARROW} How to start?**\n"
