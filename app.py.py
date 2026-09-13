@@ -270,6 +270,7 @@ GAME_ROLE_MAP = {
     "AV": 1500198955940712468,
     "UTD": 1505300013604147332,
     "AE": 1541834030717075457,
+    "DQR": 1548723005679599706,
 }
 
 # CPU Optimization: Limit bot to 25% CPU usage (1 core out of 4)
@@ -1369,12 +1370,12 @@ class JoinMethodView(discord.ui.View):
         
         embed.set_footer(text="PARADOX Carry Service • Premium Edition")
         
-        # Use Paradox logo as thumbnail
+        # Use Naruto image as thumbnail
         ticket_files = []
-        logo_path = get_asset_path("setup_header.png")
-        if os.path.exists(logo_path):
-            logo_file = discord.File(logo_path, filename="paradox_logo.png")
-            embed.set_thumbnail(url="attachment://paradox_logo.png")
+        logo_path = get_asset_path("naruto.webp")
+        if logo_path and os.path.exists(logo_path):
+            logo_file = discord.File(logo_path, filename="naruto.webp")
+            embed.set_thumbnail(url="attachment://naruto.webp")
             ticket_files.append(logo_file)
         else:
             embed.set_thumbnail(url=interaction.client.user.display_avatar.url)
@@ -1433,9 +1434,15 @@ class ParadoxTicketView(discord.ui.View):
             embed.add_field(name=f"{Emojis.GAME} Game", value=f"```\n{game_name}\n```", inline=True)
             embed.add_field(name=f"{Emojis.STATUS} Gamemode", value=f"```\n{game_id}\n```", inline=True)
             
-            # Use the bot's current Discord avatar so it stays in sync automatically.
+            # Use Naruto image as thumbnail for carry system
             files = []
-            embed.set_thumbnail(url=interaction.client.user.display_avatar.url)
+            naruto_path = get_asset_path("naruto.webp")
+            if naruto_path and os.path.exists(naruto_path):
+                naruto_file = discord.File(naruto_path, filename="naruto_thumb.webp")
+                embed.set_thumbnail(url="attachment://naruto_thumb.webp")
+                files.append(naruto_file)
+            else:
+                embed.set_thumbnail(url=interaction.client.user.display_avatar.url)
             game_image_names = {
                 "ALS": "als.webp",
                 "AV": "av.png",
@@ -2130,6 +2137,7 @@ GAME_ROLE_MAP = {
     "AV": 1500198955940712468,
     "UTD": 1505300013604147332,
     "AE": 1541834030717075457,
+    "DQR": 1548723005679599706,
 }
 
 # CPU Optimization: Limit bot to 25% CPU usage (1 core out of 4)
@@ -3211,12 +3219,12 @@ class JoinMethodView(discord.ui.View):
         
         embed.set_footer(text="PARADOX Carry Service • Premium Edition")
         
-        # Use Paradox logo as thumbnail
+        # Use Naruto image as thumbnail
         ticket_files = []
-        logo_path = get_asset_path("setup_header.png")
-        if os.path.exists(logo_path):
-            logo_file = discord.File(logo_path, filename="paradox_logo.png")
-            embed.set_thumbnail(url="attachment://paradox_logo.png")
+        logo_path = get_asset_path("naruto.webp")
+        if logo_path and os.path.exists(logo_path):
+            logo_file = discord.File(logo_path, filename="naruto.webp")
+            embed.set_thumbnail(url="attachment://naruto.webp")
             ticket_files.append(logo_file)
         else:
             embed.set_thumbnail(url=interaction.client.user.display_avatar.url)
@@ -3276,9 +3284,15 @@ class ParadoxTicketView(discord.ui.View):
             embed.add_field(name=f"{Emojis.GAME} Game", value=f"```\n{game_name}\n```", inline=True)
             embed.add_field(name=f"{Emojis.STATUS} Gamemode", value=f"```\n{game_id}\n```", inline=True)
             
-            # Use the bot's current Discord avatar so it stays in sync automatically.
+            # Use Naruto image as thumbnail for carry system
             files = []
-            embed.set_thumbnail(url=interaction.client.user.display_avatar.url)
+            naruto_path = get_asset_path("naruto.webp")
+            if naruto_path and os.path.exists(naruto_path):
+                naruto_file = discord.File(naruto_path, filename="naruto_thumb.webp")
+                embed.set_thumbnail(url="attachment://naruto_thumb.webp")
+                files.append(naruto_file)
+            else:
+                embed.set_thumbnail(url=interaction.client.user.display_avatar.url)
             game_image_names = {
                 "ALS": "als.webp",
                 "AV": "av.png",
