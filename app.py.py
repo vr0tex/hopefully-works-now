@@ -2420,7 +2420,6 @@ def create_vouch_embed(customer, booster, game, feedback, total_vouches, ticket_
         embed.add_field(name="🎟️ Ticket", value=f"#{ticket_id}", inline=False)
     else:
         embed.add_field(name="🎮 Main Game", value=game, inline=False)
-    embed.add_field(name="🏅 Rank", value=get_vouch_rank(total_vouches), inline=False)
     embed.add_field(name="🏆 Total Vouches", value=str(total_vouches), inline=False)
     embed.add_field(
         name="🕘 Registered",
