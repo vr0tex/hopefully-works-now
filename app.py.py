@@ -238,7 +238,7 @@ def get_asset_path(filename):
 async def set_bot_avatar_from_asset(bot):
     """Use the repo's Paradox asset as the current bot avatar when available."""
     avatar_candidates = [
-        "paradox img.png",
+        "naruto.webp",
         "bot_avatar.png",
         "bot_avatar.jpg",
         "bot_avatar.jpeg",
@@ -247,7 +247,7 @@ async def set_bot_avatar_from_asset(bot):
         "setup_header.png",
         "paradox.png",
         "paradox.jpg",
-        "yuji.png",
+        "all anime.webp",
     ]
 
     for filename in avatar_candidates:
@@ -269,6 +269,1853 @@ GAME_ROLE_MAP = {
     "ALS": 1500199051952656578,
     "AV": 1500198955940712468,
     "UTD": 1505300013604147332,
+    "AE": 1541834030717075457,
+}
+
+# CPU Optimization: Limit bot to 25% CPU usage (1 core out of 4)
+try:
+    import psutil
+    process = psutil.Process(os.getpid())
+    cpu_count = psutil.cpu_count(logical=True)
+    # Assign to core 0 only (25% on 4-core, 20% on 5-core, etc)
+    cores_to_use = max(1, cpu_count // 4)
+    process.cpu_affinity(list(range(cores_to_use)))
+    # Lower process priority to use less CPU
+    process.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS if hasattr(psutil, 'BELOW_NORMAL_PRIORITY_CLASS') else 10)
+    print(f"✅ CPU Optimization: {cores_to_use} core(s), reduced priority")
+except Exception as e:
+    print(f"⚠️ CPU optimization partial: {e}")
+
+# Global CPU throttling
+_cpu_throttle_enabled = True
+_message_batch_time = 0.05  # Batch messages every 50ms
+_keyword_check_cooldown = 2  # Check keywords max once every 2 seconds per user
+_keyword_cooldowns = {}  # user_id -> last_check_time
+
+def get_bonus_vouches(user_id):
+    try:
+        conn = get_db_connection()
+        
+        if USE_POSTGRESQL:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT total, games_json FROM bonus_vouches WHERE user_id = %s",
+                (str(user_id),),
+            )
+            row = cursor.fetchone()
+            cursor.close()
+        else:
+            row = conn.execute(
+                "SELECT total, games_json FROM bonus_vouches WHERE user_id = ?",
+                (str(user_id),),
+            ).fetchone()
+        
+        conn.close()
+        
+        if row is None:
+            return {"total": 0, "games": {}}
+        games = json.loads(row[1] or "{}") if row[1] else {}
+        return {"total": int(row[0]), "games": games}
+    except Exception as exc:
+        print(f"Warning: failed to read bonus vouches from database: {exc}")
+        try:
+            with open(os.path.join(BASE_DIR, "bonus_vouches.json"), "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get(str(user_id), {"total": 0, "games": {}})
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {"total": 0, "games": {}}
+
+
+def save_vouch_record(booster_id, customer_id, game, feedback, star_rating=5, ticket_id=None, booster_name=None, source='local'):
+    try:
+        conn = get_db_connection()
+        
+        if USE_POSTGRESQL:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO vouch_records (
+                    booster_id, customer_id, game, feedback, star_rating, ticket_id, booster_name, created_at, source
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    str(booster_id),
+                    str(customer_id),
+                    game,
+                    feedback,
+                    int(star_rating),
+                    str(ticket_id) if ticket_id is not None else None,
+                    booster_name,
+                    datetime.now(timezone.utc).isoformat(),
+                    source,
+                ),
+            )
+            record_id = cursor.fetchone()[0]
+            cursor.close()
+        else:
+            cursor = conn.execute(
+                """
+                INSERT INTO vouch_records (
+                    booster_id, customer_id, game, feedback, star_rating, ticket_id, booster_name, created_at, source
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(booster_id),
+                    str(customer_id),
+                    game,
+                    feedback,
+                    int(star_rating),
+                    str(ticket_id) if ticket_id is not None else None,
+                    booster_name,
+                    datetime.now(timezone.utc).isoformat(),
+                    source,
+                ),
+            )
+            record_id = cursor.lastrowid
+        
+        conn.commit()
+        conn.close()
+        return record_id
+    except Exception as exc:
+        print(f"Error saving vouch record: {exc}")
+
+def _export_vouches_to_json():
+    """Export all vouches to vouches.json for persistent storage."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        if USE_POSTGRESQL:
+            cursor.execute("SELECT user_id, total, games_json FROM bonus_vouches")
+        else:
+            cursor.execute("SELECT user_id, total, games_json FROM bonus_vouches")
+        bonus_rows = cursor.fetchall()
+        if USE_POSTGRESQL:
+            cursor.execute("SELECT booster_id, customer_id, game, feedback, star_rating, ticket_id, booster_name, created_at FROM vouch_records")
+        else:
+            cursor.execute("SELECT booster_id, customer_id, game, feedback, star_rating, ticket_id, booster_name, created_at FROM vouch_records")
+        vouch_rows = cursor.fetchall()
+        conn.close()
+        data = {
+            "bonus_vouches": [
+                {"user_id": r[0], "total": r[1], "games_json": r[2]} for r in bonus_rows
+            ],
+            "vouch_records": [
+                {"booster_id": r[0], "customer_id": r[1], "game": r[2], "feedback": r[3],
+                 "star_rating": r[4], "ticket_id": r[5], "booster_name": r[6], "created_at": str(r[7])}
+                for r in vouch_rows
+            ]
+        }
+        backup_path = os.path.join(BASE_DIR, "vouches.json")
+        with open(backup_path, "w", encoding="utf-8") as f:
+            import json
+            json.dump(data, f, indent=2)
+    except Exception as exc:
+        print(f"Warning: could not export vouches to JSON: {exc}")
+        return None
+
+
+def restore_vouches_from_backup(backup_path):
+    """Restore bonus vouches and vouch records from a backup JSON file."""
+    if not os.path.exists(backup_path):
+        raise FileNotFoundError(f"Backup file not found: {backup_path}")
+
+    with open(backup_path, "r", encoding="utf-8") as f:
+        backup_data = json.load(f)
+
+    bonus_records = backup_data.get("bonus_vouches", [])
+    vouch_records = backup_data.get("vouch_records", [])
+
+    conn = get_db_connection()
+    if USE_POSTGRESQL:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM bonus_vouches")
+        cursor.execute("DELETE FROM vouch_records")
+
+        for entry in bonus_records:
+            user_id = str(entry.get("user_id", ""))
+            if not user_id:
+                continue
+            cursor.execute(
+                """
+                INSERT INTO bonus_vouches (user_id, total, games_json)
+                VALUES (%s, %s, %s)
+                ON CONFLICT(user_id)
+                DO UPDATE SET total = excluded.total, games_json = excluded.games_json
+                """,
+                (user_id, int(entry.get("total", 0)), entry.get("games_json", "{}")),
+            )
+
+        for entry in vouch_records:
+            cursor.execute(
+                """
+                INSERT INTO vouch_records (
+                    id, booster_id, customer_id, game, feedback, star_rating, ticket_id,
+                    booster_name, created_at, source
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT(id)
+                DO UPDATE SET
+                    booster_id = excluded.booster_id,
+                    customer_id = excluded.customer_id,
+                    game = excluded.game,
+                    feedback = excluded.feedback,
+                    star_rating = excluded.star_rating,
+                    ticket_id = excluded.ticket_id,
+                    booster_name = excluded.booster_name,
+                    created_at = excluded.created_at,
+                    source = excluded.source
+                """,
+                (
+                    entry.get("id"),
+                    str(entry.get("booster_id", "")),
+                    str(entry.get("customer_id", "")),
+                    entry.get("game", "Unknown"),
+                    entry.get("feedback"),
+                    int(entry.get("star_rating", 5)),
+                    entry.get("ticket_id"),
+                    entry.get("booster_name"),
+                    entry.get("created_at", datetime.now(timezone.utc).isoformat()),
+                    entry.get("source", "local"),
+                ),
+            )
+
+        conn.commit()
+        cursor.close()
+    else:
+        conn.execute("DELETE FROM bonus_vouches")
+        conn.execute("DELETE FROM vouch_records")
+
+        for entry in bonus_records:
+            user_id = str(entry.get("user_id", ""))
+            if not user_id:
+                continue
+            conn.execute(
+                """
+                INSERT INTO bonus_vouches (user_id, total, games_json)
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id)
+                DO UPDATE SET total = excluded.total, games_json = excluded.games_json
+                """,
+                (user_id, int(entry.get("total", 0)), entry.get("games_json", "{}")),
+            )
+
+        for entry in vouch_records:
+            conn.execute(
+                """
+                INSERT INTO vouch_records (
+                    id, booster_id, customer_id, game, feedback, star_rating, ticket_id,
+                    booster_name, created_at, source
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id)
+                DO UPDATE SET
+                    booster_id = excluded.booster_id,
+                    customer_id = excluded.customer_id,
+                    game = excluded.game,
+                    feedback = excluded.feedback,
+                    star_rating = excluded.star_rating,
+                    ticket_id = excluded.ticket_id,
+                    booster_name = excluded.booster_name,
+                    created_at = excluded.created_at,
+                    source = excluded.source
+                """,
+                (
+                    entry.get("id"),
+                    str(entry.get("booster_id", "")),
+                    str(entry.get("customer_id", "")),
+                    entry.get("game", "Unknown"),
+                    entry.get("feedback"),
+                    int(entry.get("star_rating", 5)),
+                    entry.get("ticket_id"),
+                    entry.get("booster_name"),
+                    entry.get("created_at", datetime.now(timezone.utc).isoformat()),
+                    entry.get("source", "local"),
+                ),
+            )
+
+        conn.commit()
+
+    conn.close()
+    return {"bonus_vouches": len(bonus_records), "vouch_records": len(vouch_records)}
+
+
+
+def get_total_vouches(user_id, minimum_total=0):
+    total_vouches = get_bonus_vouches(user_id)["total"]
+
+    try:
+        conn = get_db_connection()
+        
+        if USE_POSTGRESQL:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*) FROM vouch_records WHERE booster_id = %s",
+                (str(user_id),),
+            )
+            local_total = cursor.fetchone()[0]
+            cursor.close()
+        else:
+            local_total = conn.execute(
+                "SELECT COUNT(*) FROM vouch_records WHERE booster_id = ?",
+                (str(user_id),),
+            ).fetchone()[0]
+        
+        conn.close()
+    except Exception as exc:
+        print(f"Error querying local vouches: {exc}")
+        local_total = 0
+
+    database_total = 0
+    if supabase:
+        try:
+            result = supabase.table("vouches").select("id", count="exact").eq(
+                "booster_id", str(user_id)
+            ).execute()
+            returned_rows = len(result.data or [])
+            database_total = max(result.count or 0, returned_rows)
+        except Exception as exc:
+            print(f"Error querying Supabase vouches: {exc}")
+
+    total = total_vouches + local_total + database_total
+    if total < minimum_total:
+        return minimum_total
+    return total
+
+def create_vouch_embed(customer, booster, game, feedback, total_vouches, ticket_id, star_rating=5, include_details=True):
+    embed = discord.Embed(title="🟢 VOUCH RECEIVED", color=0xF4D03F)
+    embed.set_thumbnail(url=booster.display_avatar.url)
+    embed.add_field(name="👤 From", value=customer.mention, inline=False)
+    embed.add_field(name="🛡️ Helper", value=booster.mention, inline=False)
+    if include_details:
+        stars_display = "⭐" * star_rating + "☆" * (5 - star_rating)
+        embed.add_field(name="⭐ Rating", value=f"{stars_display} ({star_rating}/5)", inline=False)
+        embed.add_field(name="📋 Comment", value=feedback[:1024], inline=False)
+        embed.add_field(name="🎮 Game", value=game, inline=False)
+        embed.add_field(name="🎟️ Ticket", value=f"#{ticket_id}", inline=False)
+    else:
+        embed.add_field(name="🎮 Main Game", value=game, inline=False)
+    embed.add_field(name="🏆 Total Vouches", value=str(total_vouches), inline=False)
+    embed.add_field(
+        name="🕘 Registered",
+        value=discord.utils.format_dt(datetime.now(timezone.utc), style="F"),
+        inline=False,
+    )
+    return embed
+
+def add_bonus_vouches(user_id, amount, game):
+    user_data = get_bonus_vouches(user_id)
+    user_data["total"] = int(user_data.get("total", 0)) + int(amount)
+    games = user_data.get("games", {}) if isinstance(user_data.get("games", {}), dict) else {}
+    games[game] = games.get(game, 0) + int(amount)
+    user_data["games"] = games
+
+    try:
+        conn = get_db_connection()
+        
+        if USE_POSTGRESQL:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO bonus_vouches (user_id, total, games_json)
+                VALUES (%s, %s, %s)
+                ON CONFLICT(user_id)
+                DO UPDATE SET total = excluded.total, games_json = excluded.games_json
+                """,
+                (str(user_id), user_data["total"], json.dumps(games)),
+            )
+            cursor.close()
+        else:
+            conn.execute(
+                """
+                INSERT INTO bonus_vouches (user_id, total, games_json)
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id)
+                DO UPDATE SET total = excluded.total, games_json = excluded.games_json
+                """,
+                (str(user_id), user_data["total"], json.dumps(games)),
+            )
+        
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        print(f"Error updating bonus vouches: {exc}")
+        data = {}
+        try:
+            with open(os.path.join(BASE_DIR, "bonus_vouches.json"), "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+        data[str(user_id)] = user_data
+        with open(os.path.join(BASE_DIR, "bonus_vouches.json"), "w", encoding="utf-8") as f:
+            json.dump(data, f)
+
+    return user_data["total"]
+
+AUTO_ROLES_FILE = "auto_roles.json"
+
+def get_auto_roles():
+    base_roles = [1504585688761241681, 1500218240637341808]
+    if os.path.exists(AUTO_ROLES_FILE):
+        try:
+            with open(AUTO_ROLES_FILE, "r") as f:
+                data = json.load(f)
+                saved_roles = data.get("roles", [])
+                for r in saved_roles:
+                    if r not in base_roles:
+                        base_roles.append(r)
+        except Exception:
+            pass
+    return base_roles
+
+def add_auto_role(role_id):
+    roles = get_auto_roles()
+    if role_id not in roles:
+        roles.append(role_id)
+        with open(AUTO_ROLES_FILE, "w") as f:
+            json.dump({"roles": roles}, f)
+        return True
+    return False
+
+USER_MESSAGES_FILE = "user_messages.json"
+
+# In-memory cache for message tracking (reduces disk I/O)
+_message_cache = {}  # user_id -> list of timestamps
+_last_save = datetime.now(timezone.utc).timestamp()
+_save_interval = 900  # Save to disk every 15 minutes (reduced frequency for web hosting)
+
+# CPU throttling: Add small delay between message events to prevent CPU spikes
+_message_limiter = asyncio.Semaphore(5)  # Max 5 concurrent message handlers
+_last_message_time = 0
+_min_message_interval = 0.01  # 10ms minimum between processing messages
+
+# Thread pool executor for CPU-intensive operations (prevents blocking event loop)
+import concurrent.futures
+_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)  # Single threaded to limit CPU
+
+def load_user_messages():
+    """Load from disk into cache"""
+    if os.path.exists(USER_MESSAGES_FILE):
+        try:
+            with open(USER_MESSAGES_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def save_user_messages(data):
+    """Save cache to disk"""
+    try:
+        with open(USER_MESSAGES_FILE, "w") as f:
+            json.dump(data, f)
+    except Exception as e:
+        print(f"Error saving user messages: {e}")
+
+async def periodic_save_messages():
+    """Background task to save message cache to disk every 5 minutes"""
+    while True:
+        try:
+            await asyncio.sleep(_save_interval)
+            if _message_cache:
+                # Prune old entries and save
+                now = datetime.now(timezone.utc).timestamp()
+                cutoff = now - 86400
+                
+                pruned_cache = {}
+                for user_id, timestamps in _message_cache.items():
+                    valid = [t for t in timestamps if t >= cutoff]
+                    if valid:
+                        pruned_cache[user_id] = valid
+                
+                save_user_messages(pruned_cache)
+        except Exception as e:
+            print(f"Error in periodic_save_messages: {e}")
+
+def track_message(user_id):
+    """Track message in memory (very fast, minimal CPU)"""
+    global _message_cache
+    user_key = str(user_id)
+    now = datetime.now(timezone.utc).timestamp()
+    
+    if user_key not in _message_cache:
+        _message_cache[user_key] = []
+    
+    _message_cache[user_key].append(now)
+    
+    # Keep only last 100 messages per user in memory to limit memory usage
+    if len(_message_cache[user_key]) > 100:
+        cutoff = now - 86400
+        _message_cache[user_key] = [t for t in _message_cache[user_key] if t >= cutoff][-100:]
+
+def get_message_count_last_24h(user_id):
+    """Get message count from in-memory cache"""
+    user_key = str(user_id)
+    now = datetime.now(timezone.utc).timestamp()
+    cutoff = now - 86400
+    
+    timestamps = _message_cache.get(user_key, [])
+    pruned = [t for t in timestamps if t >= cutoff]
+    
+    if pruned != timestamps:
+        _message_cache[user_key] = pruned
+    
+    return len(pruned)
+
+USER_TICKETS_FILE = "user_tickets.json"
+
+def increment_ticket_count(user_id):
+    data = {}
+    if os.path.exists(USER_TICKETS_FILE):
+        try:
+            with open(USER_TICKETS_FILE, "r") as f:
+                data = json.load(f)
+        except Exception:
+            pass
+    data[str(user_id)] = data.get(str(user_id), 0) + 1
+    try:
+        with open(USER_TICKETS_FILE, "w") as f:
+            json.dump(data, f)
+    except Exception:
+        pass
+        
+def get_ticket_count(user_id):
+    if os.path.exists(USER_TICKETS_FILE):
+        try:
+            with open(USER_TICKETS_FILE, "r") as f:
+                data = json.load(f)
+                return data.get(str(user_id), 0)
+        except Exception:
+            pass
+    return 0
+
+
+# Warnings storage
+WARNINGS_FILE = "warnings.json"
+
+def load_warnings():
+    if os.path.exists(WARNINGS_FILE):
+        try:
+            with open(WARNINGS_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def save_warnings(data):
+    try:
+        with open(WARNINGS_FILE, "w") as f:
+            json.dump(data, f)
+    except Exception as e:
+        print(f"Error saving warnings: {e}")
+
+def get_warnings(user_id):
+    data = load_warnings()
+    return data.get(str(user_id), {"count": 0, "entries": []})
+
+def add_warning(user_id, moderator_id, reason=None):
+    data = load_warnings()
+    key = str(user_id)
+    entry = {
+        "moderator_id": moderator_id,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "reason": reason or ""
+    }
+    user_data = data.get(key, {"count": 0, "entries": []})
+    user_data["count"] = user_data.get("count", 0) + 1
+    user_data.setdefault("entries", []).append(entry)
+    data[key] = user_data
+    save_warnings(data)
+    return user_data["count"]
+
+def remove_warning(user_id, num: int = 1):
+    """Remove the most recent `num` warnings for a user. Returns (new_count, removed_entries)."""
+    if num <= 0:
+        return get_warnings(user_id).get("count", 0), []
+
+    data = load_warnings()
+    key = str(user_id)
+    user_data = data.get(key, {"count": 0, "entries": []})
+    entries = user_data.get("entries", [])
+    if not entries:
+        return 0, []
+
+    # Pop up to `num` most recent entries
+    removed = []
+    for _ in range(min(num, len(entries))):
+        removed_entry = entries.pop()
+        removed.append(removed_entry)
+
+    user_data["entries"] = entries
+    user_data["count"] = len(entries)
+    if user_data["count"] <= 0:
+        # Remove user key entirely if no warnings left
+        if key in data:
+            del data[key]
+    else:
+        data[key] = user_data
+
+    save_warnings(data)
+    return user_data.get("count", 0), removed
+
+
+# Load environment variables
+load_dotenv()
+
+TOKEN = os.getenv('DISCORD_TOKEN')
+CATEGORY_ID = int(os.getenv('CATEGORY_ID', 0))
+STAFF_ROLE_ID = int(os.getenv('STAFF_ROLE_ID', 0))
+VOUCH_CHANNEL_ID = int(os.getenv('VOUCH_CHANNEL_ID', 0))
+HELPER_CHANNEL_ID = int(os.getenv('HELPER_CHANNEL_ID', 0))
+
+print(f"DEBUG: CATEGORY_ID={CATEGORY_ID}")
+print(f"DEBUG: STAFF_ROLE_ID={STAFF_ROLE_ID}")
+print(f"DEBUG: DISCORD_TOKEN loaded: {'YES' if bool(TOKEN) else 'NO'}")
+print(f"DEBUG: .env file exists: {'YES' if os.path.exists('.env') else 'NO'}")
+
+# Supabase Setup
+SUPABASE_URL = os.getenv('SUPABASE_URL', '').replace('/rest/v1/', '')
+SUPABASE_KEY = os.getenv('SUPABASE_KEY')
+
+init_vouch_database()
+
+supabase: Client = None
+if SUPABASE_URL and SUPABASE_KEY and SUPABASE_URL != "your_supabase_url":
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    except Exception as e:
+        print(f"WARNING: Supabase disabled because the configuration is invalid: {e}")
+
+class Emojis:
+    # Defaults
+    CARRY = "⚔️"
+    VOUCH = "⭐"
+    STAFF = "🛡️"
+    TICKET = "🎫"
+    SUCCESS = "✅"
+    WAITING = "⏳"
+    GAME = "🎮"
+    USER = "👤"
+    INFO = "ℹ️"
+    ARROW = "➔"
+    LOCK = "🔒"
+    ALS = AC = AV = BL = ARX = ASTD = AOL = AE = "🎮"
+    CLAIM = UNCLAIM = REMIND = COMPLETE = LINK = PLUS = DIAMOND = GOAL = STATUS = "🔹"
+
+    @classmethod
+    def update(cls, bot: commands.Bot):
+        game_emoji_aliases = {
+            'ALS': {'als', 'animelaststand'},
+            'AV': {'av', 'animevanguards'},
+            'AE': {'ae', 'animeexpeditions'},
+        }
+        keys = [
+            'CARRY', 'VOUCH', 'STAFF', 'TICKET', 'SUCCESS', 'WAITING', 'GAME', 'USER', 'INFO', 'ARROW', 'LOCK',
+            'ALS', 'AC', 'AV', 'BL', 'ARX', 'ASTD', 'AOL', 'AE',
+            'CLAIM', 'UNCLAIM', 'REMIND', 'COMPLETE', 'LINK', 'PLUS', 'DIAMOND', 'GOAL', 'STATUS'
+        ]
+        
+        for key in keys:
+            val = os.getenv(f'EMOJI_{key}')
+            if not val:
+                normalized_names = game_emoji_aliases.get(key, {key.lower()})
+                emoji_obj = next(
+                    (emoji for emoji in bot.emojis
+                     if re.sub(r'[^a-z0-9]', '', emoji.name.lower()) in normalized_names),
+                    None,
+                )
+                if emoji_obj:
+                    setattr(cls, key, emoji_obj)
+                continue
+                
+            if val.isdigit():
+                emoji_id = int(val)
+                emoji_obj = bot.get_emoji(emoji_id)
+                if emoji_obj:
+                    setattr(cls, key, emoji_obj)
+                else:
+                    # Fallback to a generic emoji instead of :p:
+                    generic_fallbacks = {
+                        'ALS': "🎮", 'AC': "🎮", 'AV': "🎮", 'BL': "🎮", 'ARX': "🎮", 'ASTD': "🎮", 'AOL': "🎮", 'AE': "🎮",
+                        'CARRY': "⚔️", 'VOUCH': "⭐", 'STAFF': "🛡️", 'TICKET': "🎫", 'SUCCESS': "✅", 'WAITING': "⏳", 'GAME': "🎮", 'USER': "👤", 'INFO': "ℹ️", 'ARROW': "➔", 'LOCK': "🔒",
+                        'CLAIM': "🔹", 'UNCLAIM': "🔹", 'REMIND': "🔹", 'COMPLETE': "✅", 'LINK': "🔗", 'PLUS': "➕", 'DIAMOND': "💎", 'GOAL': "🎯", 'STATUS': "📊"
+                    }
+                    setattr(cls, key, generic_fallbacks.get(key, "🔹"))
+            else:
+                setattr(cls, key, val)
+
+class VouchModal(discord.ui.Modal, title="Vouch Feedback"):
+    stars = discord.ui.TextInput(
+        label="Star Rating (1-5)",
+        style=discord.TextStyle.short,
+        placeholder="5",
+        required=True,
+        min_length=1,
+        max_length=1,
+        default="5"
+    )
+    feedback = discord.ui.TextInput(
+        label="Feedback",
+        style=discord.TextStyle.paragraph,
+        placeholder="Thanks good carry...",
+        required=True,
+        max_length=150
+    )
+
+    def __init__(self, booster: discord.Member, game: str, user_id: int):
+        super().__init__()
+        self.booster = booster
+        self.game = game
+        self.user_id = user_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        # Validate star rating
+        try:
+            star_count = int(self.stars.value)
+            if star_count < 1 or star_count > 5:
+                star_count = 5
+        except ValueError:
+            star_count = 5
+
+        await interaction.response.defer(ephemeral=True)
+        booster = self.booster
+        game = self.game
+        customer = interaction.user
+        previous_total = get_total_vouches(booster.id)
+
+        local_vouch_id = save_vouch_record(
+            booster_id=booster.id,
+            customer_id=customer.id,
+            game=game,
+            feedback=self.feedback.value,
+            star_rating=star_count,
+            ticket_id=interaction.channel.id,
+            booster_name=booster.name,
+            source='local',
+        )
+
+        vouch_saved = False
+        if supabase:
+            try:
+                supabase.table("vouches").insert({
+                    "booster_id": str(booster.id),
+                    "customer_id": str(customer.id),
+                    "game": game,
+                    "booster_name": booster.name,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "feedback": self.feedback.value,
+                    "star_rating": star_count,
+                    "ticket_id": str(interaction.channel.id),
+                }).execute()
+                vouch_saved = True
+            except Exception as e:
+                print(f"Error saving to Supabase: {e}")
+
+        if not vouch_saved and local_vouch_id is None:
+            add_bonus_vouches(booster.id, 1, game)
+
+        if VOUCH_CHANNEL_ID != 0:
+            vouch_channel = interaction.guild.get_channel(VOUCH_CHANNEL_ID)
+            if vouch_channel:
+                minimum_total = previous_total + 1
+                total_vouches = get_total_vouches(booster.id, minimum_total)
+
+                embed = create_vouch_embed(
+                    customer, booster, game, self.feedback.value, total_vouches,
+                    interaction.channel.id, star_rating=star_count
+                )
+                await vouch_channel.send(embed=embed)
+
+        await interaction.followup.send(f"{Emojis.SUCCESS} Vouch registered! Closing ticket in 3 seconds...", ephemeral=False)
+        await asyncio.sleep(3)
+        try:
+            await interaction.channel.delete()
+        except discord.errors.NotFound:
+            pass
+        except discord.errors.Forbidden:
+            print("Missing permissions to delete the ticket channel.")
+
+class CarryRequestModal(discord.ui.Modal, title="Carry Request Details"):
+    username = discord.ui.TextInput(
+        label="Your In-Game Username",
+        placeholder="Enter your Roblox username...",
+        required=True,
+        min_length=3,
+        max_length=50
+    )
+    help_with = discord.ui.TextInput(
+        label="What do you need help with?",
+        placeholder="Describe what you need (e.g. Carry to floor 50, Raid help...)",
+        style=discord.TextStyle.paragraph,
+        required=True,
+        min_length=5,
+        max_length=500
+    )
+
+    def __init__(self, game_id, game_name, method, parent_view):
+        super().__init__()
+        self.game_id = game_id
+        self.game_name = game_name
+        self.method = method
+        self.parent_view = parent_view
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await self.parent_view.finalize_ticket(interaction, self.method, self.username.value, self.help_with.value)
+
+class TicketControlView(discord.ui.View):
+    def __init__(self, customer_id: int = None, game_id: str = None):
+        super().__init__(timeout=None)
+        self.customer_id = customer_id
+        self.game_id = game_id
+
+    def _get_game(self, interaction, embed):
+        if self.game_id:
+            return self.game_id
+        for field in embed.fields:
+            if "Gamemode" in field.name:
+                match = re.search(r'\((.*?)\)', field.value)
+                if match:
+                    return match.group(1).upper()
+        return interaction.channel.name.split('-')[0].upper()
+
+    def _get_user_id(self, embed):
+        if self.customer_id:
+            return self.customer_id
+        match = re.search(r'<@!?(\d+)>', embed.description)
+        if match:
+            return int(match.group(1))
+        return None
+
+    def _get_status_index(self, embed):
+        for i, field in enumerate(embed.fields):
+            if "Status" in field.name:
+                return i
+        return len(embed.fields) - 1
+
+    @discord.ui.button(label="Claim", style=discord.ButtonStyle.green, custom_id="claim_button")
+    async def claim_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        embed = interaction.message.embeds[0]
+        game = self._get_game(interaction, embed)
+        status_idx = self._get_status_index(embed)
+        status_field = embed.fields[status_idx].value
+        if "🟢" in status_field:
+            await interaction.followup.send("❌ This ticket is already claimed!", ephemeral=True)
+            return
+
+        specific_role_id = GAME_ROLE_MAP.get(game.upper())
+        has_role = any(role.id == specific_role_id for role in interaction.user.roles)
+        
+        if not has_role:
+            allowed_roles = ["als helper", "av helper", "ae helper"]
+            has_role = any(role.name.lower() in allowed_roles for role in interaction.user.roles)
+        
+        if not has_role and not interaction.user.guild_permissions.administrator:
+            await interaction.followup.send("❌ You do not have permission to claim this ticket. Only helpers can claim.", ephemeral=True)
+            return
+
+        staff = interaction.user
+        embed.set_field_at(self._get_status_index(embed), name=f"{Emojis.STATUS} Status", value=f"🟢 **Claimed by {staff.mention}**", inline=False)
+        
+        specific_role_name = f"{game} Helper"
+        specific_role = discord.utils.get(interaction.guild.roles, name=specific_role_name)
+        if not specific_role:
+            specific_role = next((r for r in interaction.guild.roles if r.name.lower() == specific_role_name.lower()), None)
+
+        staff_role = interaction.guild.get_role(STAFF_ROLE_ID)
+        overwrites = interaction.channel.overwrites
+        
+        if specific_role:
+            overwrites[specific_role] = discord.PermissionOverwrite(read_messages=False)
+        if staff_role:
+            overwrites[staff_role] = discord.PermissionOverwrite(read_messages=False)
+            
+        overwrites[staff] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        await interaction.channel.edit(overwrites=overwrites)
+        
+        await interaction.edit_original_response(embed=embed)
+
+    @discord.ui.button(label="Unclaim", style=discord.ButtonStyle.blurple, custom_id="unclaim_button")
+    async def unclaim_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        embed = interaction.message.embeds[0]
+        game = self._get_game(interaction, embed)
+        status_idx = self._get_status_index(embed)
+        status_field = embed.fields[status_idx].value
+        if "🟢" not in status_field:
+            await interaction.followup.send("❌ This ticket is not claimed!", ephemeral=True)
+            return
+
+        match = re.search(r'<@!?(\d+)>', status_field)
+        claimer_id = int(match.group(1)) if match else None
+
+        if claimer_id != interaction.user.id and not interaction.user.guild_permissions.administrator:
+            await interaction.followup.send("❌ Only the person who claimed this can unclaim it!", ephemeral=True)
+            return
+
+        embed.set_field_at(self._get_status_index(embed), name=f"{Emojis.STATUS} Status", value=f"🟡 **Waiting for claim**", inline=False)
+        
+        specific_role_id = GAME_ROLE_MAP.get(game.upper())
+        specific_role = interaction.guild.get_role(specific_role_id) if specific_role_id else None
+        
+        if not specific_role:
+            specific_role_name = f"{game} Helper"
+            specific_role = discord.utils.get(interaction.guild.roles, name=specific_role_name)
+            if not specific_role:
+                specific_role = next((r for r in interaction.guild.roles if r.name.lower() == specific_role_name.lower()), None)
+
+        staff_role = interaction.guild.get_role(STAFF_ROLE_ID)
+        overwrites = interaction.channel.overwrites
+        if interaction.user in overwrites:
+            del overwrites[interaction.user]
+        if specific_role:
+            overwrites[specific_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        elif staff_role:
+            overwrites[staff_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        await interaction.channel.edit(overwrites=overwrites)
+        
+        await interaction.edit_original_response(embed=embed)
+
+    @discord.ui.button(label="Close Request", style=discord.ButtonStyle.red, custom_id="close_button")
+    async def close_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.channel.delete()
+
+    @discord.ui.button(label="Remind User", style=discord.ButtonStyle.secondary, custom_id="remind_button")
+    async def remind_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(f"🔔 {interaction.user.mention} is waiting for you!", ephemeral=False)
+
+    @discord.ui.button(label="Complete Run", style=discord.ButtonStyle.green, custom_id="complete_button")
+    async def complete_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        embed = interaction.message.embeds[0]
+        user_id = self._get_user_id(embed)
+        status_idx = self._get_status_index(embed)
+        status_field = embed.fields[status_idx].value
+        if "🟢" not in status_field:
+            await interaction.followup.send("❌ This ticket must be claimed first!", ephemeral=True)
+            return
+            
+        if interaction.user.id != user_id:
+            await interaction.followup.send("❌ Only the customer can complete the run!", ephemeral=True)
+            return
+
+        match = re.search(r'<@!?(\d+)>', status_field)
+        if not match:
+            await interaction.followup.send("❌ Could not determine which helper claimed this ticket.", ephemeral=True)
+            return
+            
+        claimer_id = int(match.group(1))
+
+        # Include claimer_id in the status so we can parse it in vouch_button
+        embed.set_field_at(self._get_status_index(embed), name=f"{Emojis.STATUS} Status", value=f"✅ **Run Completed by <@{claimer_id}>**", inline=False)
+        
+        # Use a dedicated view for the completed state to ensure persistence
+        view = CompletedTicketView(claimer_id=claimer_id, customer_id=user_id, game=self._get_game(interaction, embed))
+        await interaction.edit_original_response(embed=embed, view=view)
+
+    @discord.ui.button(label="Vouch Booster", style=discord.ButtonStyle.green, custom_id="vouch_button")
+    async def vouch_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = interaction.message.embeds[0]
+        user_id = self._get_user_id(embed)
+        game = self._get_game(interaction, embed)
+        
+        if interaction.user.id != user_id:
+            await interaction.response.send_message("❌ Only the customer can vouch!", ephemeral=True)
+            return
+
+        status_idx = self._get_status_index(embed)
+        status_value = embed.fields[status_idx].value
+        match = re.search(r'<@!?(\d+)>', status_value)
+        if match:
+            booster_id = int(match.group(1))
+            booster = interaction.guild.get_member(booster_id)
+        else:
+            booster = None
+
+        if not booster:
+            try:
+                booster = await interaction.guild.fetch_member(booster_id)
+            except Exception:
+                await interaction.response.send_message("❌ Could not determine booster.", ephemeral=True)
+                return
+
+        modal = VouchModal(booster, game, user_id)
+        await interaction.response.send_modal(modal)
+
+
+class CompletedTicketView(discord.ui.View):
+    def __init__(self, claimer_id: int = None, customer_id: int = None, game: str = None):
+        super().__init__(timeout=None)
+        self.claimer_id = claimer_id
+        self.customer_id = customer_id
+        self.game = game
+
+    def _get_data(self, interaction, embed):
+        customer_id = self.customer_id
+        if not customer_id:
+            match = re.search(r'<@!?(\d+)>', embed.description)
+            customer_id = int(match.group(1)) if match else None
+        
+        claimer_id = self.claimer_id
+        if not claimer_id:
+            status_field = next((f.value for f in embed.fields if "Status" in f.name), "")
+            match = re.search(r'<@!?(\d+)>', status_field)
+            claimer_id = int(match.group(1)) if match else None
+            
+        game = self.game
+        if not game:
+            for field in embed.fields:
+                if "Gamemode" in field.name:
+                    match = re.search(r'\((.*?)\)', field.value)
+                    game = match.group(1).upper() if match else None
+        
+        if not game:
+            game = interaction.channel.name.split('-')[0].upper()
+            
+        return customer_id, claimer_id, game
+
+    @discord.ui.button(label="Vouch Booster", style=discord.ButtonStyle.green, custom_id="vouch_button_completed")
+    async def vouch_button_completed(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = interaction.message.embeds[0]
+        customer_id, booster_id, game = self._get_data(interaction, embed)
+        
+        if interaction.user.id != customer_id:
+            await interaction.response.send_message("❌ Only the customer can vouch!", ephemeral=True)
+            return
+
+        if not booster_id:
+            await interaction.response.send_message("❌ Could not determine booster.", ephemeral=True)
+            return
+
+        booster = interaction.guild.get_member(booster_id)
+        if not booster:
+            try:
+                booster = await interaction.guild.fetch_member(booster_id)
+            except Exception:
+                await interaction.response.send_message("❌ Could not find booster in the server.", ephemeral=True)
+                return
+
+        modal = VouchModal(booster, game, customer_id)
+        await interaction.response.send_modal(modal)
+
+class JoinMethodView(discord.ui.View):
+    def __init__(self, game_id: str, game_name: str):
+        super().__init__(timeout=60)
+        self.game_id = game_id
+        self.game_name = game_name
+
+    @discord.ui.button(label="Join by Links", style=discord.ButtonStyle.green, custom_id="join_links")
+    async def join_links(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(CarryRequestModal(self.game_id, self.game_name, "Join by Links", self))
+
+    @discord.ui.button(label="Add Helper", style=discord.ButtonStyle.blurple, custom_id="add_helper")
+    async def add_helper(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(CarryRequestModal(self.game_id, self.game_name, "Add Helper", self))
+
+    @discord.ui.button(label="💎 Trade Coming Soon", style=discord.ButtonStyle.gray, custom_id="trade_soon", disabled=True)
+    async def trade_soon(self, interaction: discord.Interaction, button: discord.ui.Button):
+        pass
+
+    async def finalize_ticket(self, interaction: discord.Interaction, method: str, username: str, goal: str):
+        await interaction.response.defer(ephemeral=True)
+        guild = interaction.guild
+        user = interaction.user
+        category = guild.get_channel(CATEGORY_ID)
+        staff_role = guild.get_role(STAFF_ROLE_ID)
+
+        if not category:
+            await interaction.followup.send("❌ Category not configured.", ephemeral=True)
+            return
+
+        # Determine specific helper role
+        specific_role_id = GAME_ROLE_MAP.get(self.game_id)
+        specific_role = guild.get_role(specific_role_id) if specific_role_id else None
+        
+        if not specific_role:
+            specific_role_name = f"{self.game_id} Helper"
+            specific_role = discord.utils.get(guild.roles, name=specific_role_name)
+            if not specific_role:
+                specific_role = next((r for r in guild.roles if r.name.lower() == specific_role_name.lower()), None)
+
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+        }
+        if specific_role:
+            overwrites[specific_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        elif staff_role:
+            overwrites[staff_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+
+        ticket_num = datetime.now().strftime("%H%M") 
+        
+        channel = await guild.create_text_channel(
+            name=f"{self.game_id}-{user.name}",
+            category=category,
+            overwrites=overwrites
+        )
+
+        increment_ticket_count(user.id)
+
+        await interaction.followup.send(f"✅ Ticket created: {channel.mention}", ephemeral=True)
+
+        embed = V2Embed(
+            title=f"{Emojis.TICKET} Ticket #{ticket_num}",
+            description=f"{user.mention} — **Your carry request is active!**"
+        )
+        
+        embed.add_field(name=f"{Emojis.USER} Roblox Username", value=f"```\n{username}\n```", inline=False)
+        embed.add_field(name=f"{Emojis.GAME} Gamemode", value=f"```\n{self.game_name}\n```", inline=False)
+        embed.add_field(name=f"{Emojis.GOAL} Goal", value=f"```\n{goal}\n```", inline=False)
+        embed.add_field(name=f"{Emojis.LINK} Join Method", value=f"```\n{method}\n```", inline=False)
+        embed.add_field(name=f"{Emojis.STATUS} Status", value=f"🟡 **Waiting for claim**", inline=False)
+        
+        embed.set_footer(text="PARADOX Carry Service • Premium Edition")
+        
+        # Use Paradox logo as thumbnail
+        ticket_files = []
+        logo_path = get_asset_path("setup_header.png")
+        if os.path.exists(logo_path):
+            logo_file = discord.File(logo_path, filename="paradox_logo.png")
+            embed.set_thumbnail(url="attachment://paradox_logo.png")
+            ticket_files.append(logo_file)
+        else:
+            embed.set_thumbnail(url=interaction.client.user.display_avatar.url)
+        
+        ping_content = f"{user.mention}"
+        if specific_role:
+            ping_content += f" {specific_role.mention}"
+        elif staff_role:
+            ping_content += f" {staff_role.mention}"
+        
+        await channel.send(content=ping_content, embed=embed, files=ticket_files if ticket_files else [], view=TicketControlView(customer_id=user.id, game_id=self.game_id))
+
+class ParadoxTicketView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        options = [
+            discord.SelectOption(label="Anime Last Stand (ALS)", emoji=Emojis.ALS, value="ALS"),
+            discord.SelectOption(label="Anime Vanguards (AV)", emoji=Emojis.AV, value="AV"),
+            discord.SelectOption(label="Anime Expeditions (AE)", emoji=Emojis.AE, value="AE"),
+        ]
+        self.select = discord.ui.Select(
+            custom_id="paradox_selector",
+            placeholder="Select a game to start your ticket!",
+            options=options
+        )
+        self.select.callback = self.select_callback
+        self.add_item(self.select)
+
+    async def select_callback(self, interaction: discord.Interaction):
+        try:
+            # Check messages requirement (exempt admins and staff)
+            is_staff = interaction.user.guild_permissions.administrator or any(role.id == STAFF_ROLE_ID for role in interaction.user.roles)
+            if not is_staff:
+                msg_count = get_message_count_last_24h(interaction.user.id)
+                if msg_count < 15:
+                    await interaction.response.send_message(
+                        f"❌ **Ticket Access Denied**\n\n"
+                        f"You must have sent at least **15 messages** in the server in the last 24 hours to open a ticket.\n"
+                        f"Current messages sent: **{msg_count}/15**\n\n"
+                        f"Message count resets on a rolling 24-hour basis.",
+                        ephemeral=True
+                    )
+                    return
+
+            game_id = self.select.values[0]
+            game_name = [opt.label for opt in self.select.options if opt.value == game_id][0]
+            if CATEGORY_ID == 0:
+                await interaction.response.send_message("❌ Category not configured.", ephemeral=True)
+                return
+            
+            embed = V2Embed(
+                title=f"{Emojis.LINK} Select Joining Method",
+                description="How would you like to join the helper?"
+            )
+            embed.add_field(name=f"{Emojis.GAME} Game", value=f"```\n{game_name}\n```", inline=True)
+            embed.add_field(name=f"{Emojis.STATUS} Gamemode", value=f"```\n{game_id}\n```", inline=True)
+            
+            # Use the bot's current Discord avatar so it stays in sync automatically.
+            files = []
+            embed.set_thumbnail(url=interaction.client.user.display_avatar.url)
+            game_image_names = {
+                "ALS": "als.webp",
+                "AV": "av.png",
+                "AE": "ae.jpg",
+            }
+            game_image_name = game_image_names.get(game_id)
+            game_image_path = get_asset_path(game_image_name) if game_image_name else None
+            if game_image_path:
+                files.append(discord.File(game_image_path, filename=game_image_name))
+                embed.set_image(url=f"attachment://{game_image_name}")
+            
+            # Using ephemeral=True as requested for initial view
+            await interaction.response.send_message(
+                embed=embed, 
+                files=files,
+                view=JoinMethodView(game_id, game_name), 
+                ephemeral=True
+            )
+        except Exception as e:
+            print(f"DEBUG: ParadoxTicketView Error: {e}")
+            if not interaction.response.is_done():
+                await interaction.response.send_message(f"❌ An error occurred: {e}", ephemeral=True)
+            else:
+                await interaction.followup.send(f"❌ An error occurred: {e}", ephemeral=True)
+
+class HelperApplicationView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        options = [
+            discord.SelectOption(label="Anime Last Stand (ALS)", emoji=Emojis.ALS, value="ALS"),
+            discord.SelectOption(label="Anime Vanguards (AV)", emoji=Emojis.AV, value="AV"),
+            discord.SelectOption(label="Anime Expeditions (AE)", emoji=Emojis.AE, value="AE"),
+        ]
+        self.select = discord.ui.Select(
+            custom_id="helper_selector",
+            placeholder="Select your specialty!",
+            options=options
+        )
+        self.select.callback = self.select_callback
+        self.add_item(self.select)
+
+    async def select_callback(self, interaction: discord.Interaction):
+        game_id = self.select.values[0]
+        game_name = [opt.label for opt in self.select.options if opt.value == game_id][0]
+        
+        if game_id in ["ALS", "AV", "AE"]:
+            # Start Application Flow
+            await interaction.response.send_message(f"✅ **Application Started!** Please check your DMs to proceed.", ephemeral=True)
+            asyncio.create_task(start_application(interaction.user, game_id, game_name))
+            return
+
+        embed = V2Embed(
+            title=f"{Emojis.STAFF} Helper Application",
+            description=f"You are applying for the position of **{game_name} Helper**.\n\nPlease answer the questions below to proceed."
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+class InterviewTicketView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Close Ticket", style=discord.ButtonStyle.red, custom_id="close_interview")
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("🔒 Closing ticket in 3 seconds...")
+        await asyncio.sleep(3)
+        await interaction.channel.delete()
+
+class ApplicationReviewView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.role_mapping = {
+            "Anime Last Stand (ALS)": 1500199051952656578,
+            "Anime Vanguards (AV)": 1500198955940712468,
+            "Anime Expeditions (AE)": 1541834030717075457
+        }
+
+    def parse_data(self, interaction: discord.Interaction):
+        try:
+            embed = interaction.message.embeds[0]
+            title = embed.title
+            # Match after the 's (possessive) and between quotes
+            game_match = re.search(r"'s '(.*) Helper Application'", title)
+            if not game_match:
+                # Fallback: just match the last pair of quotes if possible
+                game_match = re.search(r"'([^']*) Helper Application'", title)
+            
+            game_name = game_match.group(1) if game_match else "Unknown"
+            
+            desc = embed.description
+            # Try to match both with and without backticks
+            user_match = re.search(r"UserId: `?(\d+)`?", desc)
+            applicant_id = int(user_match.group(1)) if user_match else None
+            
+            return applicant_id, game_name
+        except Exception as e:
+            print(f"DEBUG: Parse Error: {e}")
+            return None, None
+
+    @discord.ui.button(label="Accept", style=discord.ButtonStyle.green, custom_id="app_accept")
+    async def accept(self, interaction: discord.Interaction, button: discord.ui.Button):
+        print(f"DEBUG: Accept button clicked by {interaction.user}")
+        try:
+            await interaction.response.defer()
+            applicant_id, game_name = self.parse_data(interaction)
+            print(f"DEBUG: Parsed data - Applicant: {applicant_id}, Game: {game_name}")
+            
+            if not applicant_id:
+                print(f"DEBUG: Could not parse applicant ID from description.")
+                return
+
+            guild = interaction.guild
+            applicant = guild.get_member(applicant_id)
+            if not applicant:
+                try:
+                    applicant = await guild.fetch_member(applicant_id)
+                except Exception:
+                    print(f"DEBUG: Could not find member {applicant_id} in guild.")
+            
+            # Give role
+            role_id = self.role_mapping.get(game_name)
+            role_given = False
+            role = None
+            if role_id:
+                role = guild.get_role(role_id)
+                if not role:
+                    try:
+                        role = await guild.fetch_role(role_id)
+                    except Exception as e:
+                        print(f"DEBUG: Role Fetch Error: {e}")
+                
+                if role and applicant:
+                    try:
+                        await applicant.add_roles(role)
+                        role_given = True
+                    except Exception as e:
+                        print(f"DEBUG: Role Assignment Error: {e}")
+                else:
+                    print(f"DEBUG: Role {role_id} or Applicant {applicant_id} not found.")
+            else:
+                print(f"DEBUG: No role mapping found for game name: '{game_name}'")
+
+            # DM User
+            embed = V2Embed(
+                title="Application accepted",
+                description=f"Congratulations! Your application for **{game_name}** has been accepted.\n\n" + (f"✅ **You have been given the {game_name} role!**" if role_given else ""),
+                color=discord.Color.green()
+            )
+            try:
+                if applicant:
+                    await applicant.send(embed=embed)
+            except Exception as e:
+                print(f"DEBUG: DM Send Error: {e}")
+                
+            # Update staff message
+            original_embed = interaction.message.embeds[0]
+            original_embed.color = discord.Color.green()
+            original_embed.add_field(name="Status", value=f"✅ Accepted by {interaction.user.mention}", inline=False)
+            if role_given and role:
+                original_embed.add_field(name="Role Granted", value=f"✅ {role.mention} has been added to {applicant.mention}", inline=False)
+            await interaction.edit_original_response(embed=original_embed, view=None)
+        except Exception as e:
+            print(f"DEBUG: Accept Button Error: {e}")
+
+    @discord.ui.button(label="Reject", style=discord.ButtonStyle.red, custom_id="app_reject")
+    async def reject(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        applicant_id, game_name = self.parse_data(interaction)
+        if not applicant_id: return
+
+        guild = interaction.guild
+        applicant = guild.get_member(applicant_id) or await guild.fetch_member(applicant_id)
+        
+        embed = V2Embed(
+            title="Application Rejected",
+            description=f"Your application for `{game_name} Helper Application` has been rejected by {interaction.user.mention}",
+            color=discord.Color.red()
+        )
+        try:
+            if applicant: await applicant.send(embed=embed)
+        except Exception:
+            pass
+            
+        # Update staff message
+        original_embed = interaction.message.embeds[0]
+        original_embed.color = discord.Color.red()
+        original_embed.add_field(name="Status", value=f"❌ Rejected by {interaction.user.mention}", inline=False)
+        await interaction.edit_original_response(embed=original_embed, view=None)
+
+    @discord.ui.button(label="Open Ticket", style=discord.ButtonStyle.secondary, custom_id="app_ticket")
+    async def open_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        applicant_id, game_name = self.parse_data(interaction)
+        if not applicant_id: return
+        
+        guild = interaction.guild
+        applicant = guild.get_member(applicant_id) or await guild.fetch_member(applicant_id)
+        
+        category = guild.get_channel(CATEGORY_ID)
+        if not category:
+            await interaction.followup.send("❌ Ticket category not configured.", ephemeral=True)
+            return
+
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            applicant: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        }
+        
+        channel = await guild.create_text_channel(
+            name=f"interview-{applicant.name if applicant else applicant_id}",
+            category=category,
+            overwrites=overwrites
+        )
+        
+        await interaction.followup.send(f"✅ Interview ticket created: {channel.mention}", ephemeral=True)
+        
+        embed = V2Embed(
+            title="Interview Started",
+            description=f"Hello {applicant.mention if applicant else 'Applicant'}, {interaction.user.mention} would like to interview you regarding your **{game_name}** application."
+        )
+        await channel.send(content=f"{applicant.mention if applicant else ''} {interaction.user.mention}", embed=embed, view=InterviewTicketView())
+
+class YesNoView(discord.ui.View):
+    def __init__(self, user: discord.User):
+        super().__init__(timeout=120)
+        self.user = user
+        self.value = None
+
+    @discord.ui.button(label="Yes", style=discord.ButtonStyle.green)
+    async def yes(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user.id: return
+        self.value = True
+        await interaction.response.edit_message(content="**Question answered**\nYou chose option: `Yes`", embed=None, view=None)
+        self.stop()
+
+    @discord.ui.button(label="No", style=discord.ButtonStyle.red)
+    async def no(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user.id: return
+        self.value = False
+        await interaction.response.edit_message(content="**Question answered**\nYou chose option: `No`", embed=None, view=None)
+        self.stop()
+
+async def start_application(user: discord.Member, game_id: str, game_name: str):
+    try:
+        # Initial DM
+        start_embed = V2Embed(
+            title="Application Started",
+            description="Please answer the questions below, either by clicking on the dropdown menus or sending a message to the bot.",
+            color=discord.Color.green()
+        )
+        await user.send(embed=start_embed)
+    except discord.Forbidden:
+        return # User has DMs closed
+
+    if game_id == "ALS":
+        questions = [
+            {"text": "1. Can you consistently solo the hardest current Infinity/Portal stages or Raid stages and Caverns by yourself?", "type": "yesno"},
+            {"text": "2. Send a screenshot of your best units (images only).", "type": "image"},
+            {"text": "3. Do you have a maxed-out meta farming unit and a top-tier DPS unit ready for high-level carries?", "type": "yesno"},
+            {"text": "4. Will you be loyal to us?", "type": "yesno"},
+        ]
+    elif game_id == "AV":
+        questions = [
+            {"text": "1. What level are you in Anime Vanguard?", "type": "text"},
+            {"text": "2. What is your best team ( Please provide an screenshot of including your memorias and familiars)", "type": "image"},
+            {"text": "3. How active can u be daily on discord?", "type": "text"},
+            {"text": "4. Are you able to Solo the new hardest Content?", "type": "yesno"},
+            {"text": "5. What floor number are you on for all the elements?", "type": "text"},
+            {"text": "6. Are you able to carry to carry Cid raid?", "type": "yesno"},
+        ]
+    elif game_id == "AE":
+        questions = [
+            {"text": "1. Can you successfully solo high-level Raids or late-game Expeditions stages on your own?", "type": "yesno"},
+            {"text": "2. Do you have an optimized team build ready for multi-lane map coverage and boss melting?", "type": "yesno"},
+            {"text": "3. Do you actively use and understand advanced mechanics like multi-lane map positioning, Stat Anvils, and Research Tree progression to maximize your unit damage?", "type": "yesno"},
+            {"text": "4. Can you clear challenge restrictions (such as no-money-unit runs or strict skull modifier trials) for end-game rewards?", "type": "yesno"},
+            {"text": "5. Provide proof of your progress (e.g., screenshot showing a solo completion or your top-tier unit loadout).", "type": "image"},
+        ]
+    else:
+        return
+
+    answers = {}
+    start_time = datetime.now()
+    
+    def check(m):
+        return m.author.id == user.id and isinstance(m.channel, discord.DMChannel)
+
+    for i, q in enumerate(questions):
+        q_num_text = q['text']
+        embed = V2Embed(
+            title=f"{game_name} Helper Application",
+            description=f"**{q_num_text}**\n\nTo answer this question, please send a message to the bot with your response." if q['type'] != "yesno" else f"**{q_num_text}**"
+        )
+        embed.set_footer(text="Type '!end' to cancel the application.")
+        
+        if q['type'] == "yesno":
+            view = YesNoView(user)
+            msg = await user.send(embed=embed, view=view)
+            await view.wait()
+            if view.value is None:
+                await user.send("❌ Application timed out.")
+                return
+            answers[i+1] = "Yes" if view.value else "No"
+        elif q['type'] == "text":
+            await user.send(embed=embed)
+            try:
+                msg = await bot.wait_for('message', check=check, timeout=600) # 10 mins
+                if msg.content.lower().startswith("!end"):
+                    await user.send("❌ Application cancelled.")
+                    return
+                answers[i+1] = msg.content
+            except asyncio.TimeoutError:
+                await user.send("❌ Application timed out.")
+                return
+        elif q['type'] == "image":
+            await user.send(embed=embed)
+            try:
+                while True:
+                    msg = await bot.wait_for('message', check=check, timeout=600)
+                    if msg.content.lower().startswith("!end"):
+                        await user.send("❌ Application cancelled.")
+                        return
+                    image_attachment = next(
+                        (attachment for attachment in msg.attachments
+                         if attachment.content_type and attachment.content_type.startswith("image/")),
+                        None,
+                    )
+                    if image_attachment:
+                        answers[i+1] = image_attachment.url
+                        break
+                    else:
+                        await user.send("❌ Please upload an image file or type '!end' to cancel.")
+            except asyncio.TimeoutError:
+                await user.send("❌ Application timed out.")
+                return
+
+    # Final submission
+    submit_embed = V2Embed(
+        title="Application submitted.",
+        description="Your application has been submitted.",
+        color=discord.Color.green()
+    )
+    await user.send(embed=submit_embed)
+
+    # Send to staff
+    if HELPER_CHANNEL_ID != 0:
+        staff_channel = bot.get_channel(HELPER_CHANNEL_ID)
+        if staff_channel:
+            duration = int((datetime.now() - start_time).total_seconds())
+            
+            # Format description based on questions
+            desc_parts = []
+            for i, q in enumerate(questions):
+                q_text = q['text'].split('\n')[0] # Get the first line of the question
+                extra_info = q['text'].split('\n')[1] if '\n' in q['text'] else ""
+                
+                part = f"**{q_text}**\n\n"
+                if extra_info:
+                    part += f"**{extra_info}**\n"
+                
+                if q['type'] == "image":
+                    part += f"[View attachment]({answers[i+1]})\n\n"
+                else:
+                    part += f"{answers[i+1]}\n\n"
+                desc_parts.append(part)
+            
+            desc_parts.append("**Submission stats**\n")
+            desc_parts.append(f"UserId: `{user.id}`\n")
+            desc_parts.append(f"Username: `{user.name}`\n")
+            desc_parts.append(f"User: {user.mention}\n")
+            desc_parts.append(f"Duration: `{duration}s`")
+            
+            if isinstance(user, discord.Member) and user.joined_at:
+                joined_delta = datetime.now(timezone.utc) - user.joined_at
+                days = joined_delta.days
+                if days == 0: joined_text = "today"
+                elif days == 1: joined_text = "a day ago"
+                else: joined_text = f"{days} days ago"
+                desc_parts.append(f"\nJoined guild: `{joined_text}`")
+
+            review_embed = V2Embed(
+                title=f"{user.name}'s '{game_name} Helper Application' Application Submitted",
+                description="".join(desc_parts),
+                color=0x2b2d31
+            )
+            review_embed.set_thumbnail(url=user.display_avatar.url)
+            
+            await staff_channel.send(content="<@&1500179933073375232>", embed=review_embed, view=ApplicationReviewView())
+
+# ──────────────────────────────────────────
+# PING ROLE SELF-ASSIGN SYSTEM
+# ──────────────────────────────────────────
+
+PING_ROLES = {
+    "announcements": "Announcement Pings",
+    "giveaways":     "Giveaway Pings",
+    "events":        "Event Pings",
+}
+
+class PingRoleView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    async def _toggle_role(self, interaction: discord.Interaction, role_name: str, emoji: str):
+        await interaction.response.defer(ephemeral=True)
+        guild = interaction.guild
+        member = interaction.user
+        role = discord.utils.get(guild.roles, name=role_name)
+        if not role:
+            try:
+                role = await guild.create_role(
+                    name=role_name,
+                    mentionable=True,
+                    reason="Auto-created by ping role system"
+                )
+            except discord.Forbidden:
+                await interaction.followup.send("❌ I don't have permission to create roles!", ephemeral=True)
+                return
+        if role in member.roles:
+            await member.remove_roles(role, reason="Ping role self-removed")
+            await interaction.followup.send(
+                f"{emoji} Removed **{role_name}** — you will no longer receive these pings.",
+                ephemeral=True
+            )
+        else:
+            await member.add_roles(role, reason="Ping role self-assigned")
+            await interaction.followup.send(
+                f"{emoji} Added **{role_name}** — you will now receive these pings!",
+                ephemeral=True
+            )
+
+    @discord.ui.button(label="📢 Announcements", style=discord.ButtonStyle.blurple, custom_id="ping_announcements")
+    async def announcements(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._toggle_role(interaction, PING_ROLES["announcements"], "📢")
+
+    @discord.ui.button(label="🎉 Giveaways", style=discord.ButtonStyle.green, custom_id="ping_giveaways")
+    async def giveaways(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._toggle_role(interaction, PING_ROLES["giveaways"], "🎉")
+
+    @discord.ui.button(label="🎊 Events", style=discord.ButtonStyle.red, custom_id="ping_events")
+    async def events(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._toggle_role(interaction, PING_ROLES["events"], "🎊")
+
+# =====================================================================
+if USE_POSTGRESQL:
+    print(f"✅ Using PostgreSQL database")
+else:
+    print(f"ℹ️ Using SQLite database")
+
+# Persistent local voucher storage. This avoids resets when the bot restarts or when Supabase is unavailable.
+
+def get_db_connection():
+    """Get a database connection (PostgreSQL or SQLite)."""
+    if USE_POSTGRESQL:
+        try:
+            conn = psycopg2.connect(DATABASE_URL)
+            return conn
+        except Exception as e:
+            print(f"❌ PostgreSQL connection failed: {e}")
+            print(f"⚠️ Falling back to SQLite")
+            return sqlite3.connect(VOUCH_DB_PATH)
+    else:
+        return sqlite3.connect(VOUCH_DB_PATH)
+
+def init_vouch_database():
+    """Initialize vouches database (PostgreSQL or SQLite)."""
+    if USE_POSTGRESQL:
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Create tables for PostgreSQL
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS bonus_vouches (
+                    user_id TEXT PRIMARY KEY,
+                    total INTEGER NOT NULL DEFAULT 0,
+                    games_json TEXT NOT NULL DEFAULT '{}'
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS vouch_records (
+                    id SERIAL PRIMARY KEY,
+                    booster_id TEXT NOT NULL,
+                    customer_id TEXT NOT NULL,
+                    game TEXT NOT NULL,
+                    feedback TEXT,
+                    star_rating INTEGER NOT NULL DEFAULT 5,
+                    ticket_id TEXT,
+                    booster_name TEXT,
+                    created_at TEXT NOT NULL,
+                    source TEXT NOT NULL DEFAULT 'local'
+                )
+            """)
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            print("✅ PostgreSQL vouches database initialized")
+        except Exception as e:
+            print(f"❌ Failed to initialize PostgreSQL: {e}")
+    else:
+        # SQLite setup
+        conn = sqlite3.connect(VOUCH_DB_PATH)
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS bonus_vouches (
+                user_id TEXT PRIMARY KEY,
+                total INTEGER NOT NULL DEFAULT 0,
+                games_json TEXT NOT NULL DEFAULT '{}'
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS vouch_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                booster_id TEXT NOT NULL,
+                customer_id TEXT NOT NULL,
+                game TEXT NOT NULL,
+                feedback TEXT,
+                star_rating INTEGER NOT NULL DEFAULT 5,
+                ticket_id TEXT,
+                booster_name TEXT,
+                created_at TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'local'
+            )
+            """
+        )
+        conn.commit()
+        conn.close()
+        print("✅ SQLite vouches database initialized")
+
+    # Migrate legacy JSON if it exists
+    legacy_file = os.path.join(BASE_DIR, "bonus_vouches.json")
+    if os.path.exists(legacy_file):
+        try:
+            with open(legacy_file, "r", encoding="utf-8") as f:
+                legacy_data = json.load(f)
+            if isinstance(legacy_data, dict):
+                for user_id, user_data in legacy_data.items():
+                    if not isinstance(user_data, dict):
+                        continue
+                    legacy_total = max(0, int(user_data.get("total", 0)))
+                    legacy_games = user_data.get("games") or {}
+                    if legacy_total > 0:
+                        if USE_POSTGRESQL:
+                            conn = get_db_connection()
+                            cursor = conn.cursor()
+                            cursor.execute(
+                                """
+                                INSERT INTO bonus_vouches (user_id, total, games_json)
+                                VALUES (%s, %s, %s)
+                                ON CONFLICT(user_id)
+                                DO UPDATE SET total = excluded.total, games_json = excluded.games_json
+                                """,
+                                (str(user_id), legacy_total, json.dumps(legacy_games)),
+                            )
+                            conn.commit()
+                            cursor.close()
+                            conn.close()
+                        else:
+                            conn = sqlite3.connect(VOUCH_DB_PATH)
+                            conn.execute(
+                                """
+                                INSERT INTO bonus_vouches (user_id, total, games_json)
+                                VALUES (?, ?, ?)
+                                ON CONFLICT(user_id)
+                                DO UPDATE SET total = excluded.total, games_json = excluded.games_json
+                                """,
+                                (str(user_id), legacy_total, json.dumps(legacy_games)),
+                            )
+                            conn.commit()
+                            conn.close()
+                print(f"✅ Migrated legacy bonus vouches from {legacy_file} into database")
+        except Exception as exc:
+            print(f"⚠️ Could not migrate legacy bonus vouches: {exc}")
+
+    return VOUCH_DB_PATH
+
+
+def get_welcome_channel_id_for_guild(guild_id):
+    try:
+        guild_id = int(guild_id)
+    except (TypeError, ValueError):
+        return WELCOME_CHANNEL_ID
+    return int(WELCOME_CHANNELS.get(guild_id, WELCOME_CHANNEL_ID))
+
+
+def load_welcome_settings():
+    global WELCOME_CHANNELS
+    try:
+        if not os.path.exists(WELCOME_SETTINGS_FILE):
+            return {}
+        with open(WELCOME_SETTINGS_FILE, "r", encoding="utf-8") as fh:
+            data = json.load(fh) or {}
+
+        enabled = {}
+        channel_map = {}
+        for guild_id, value in data.items():
+            try:
+                guild_key = int(guild_id)
+            except (TypeError, ValueError):
+                continue
+
+            if isinstance(value, dict):
+                enabled[guild_key] = bool(value.get("enabled", False))
+                channel_id = value.get("channel_id")
+                if channel_id is not None:
+                    try:
+                        channel_map[guild_key] = int(channel_id)
+                    except (TypeError, ValueError):
+                        pass
+            else:
+                enabled[guild_key] = bool(value)
+
+        WELCOME_ENABLED.clear()
+        WELCOME_ENABLED.update(enabled)
+        WELCOME_CHANNELS.clear()
+        WELCOME_CHANNELS.update(channel_map)
+        return WELCOME_ENABLED
+    except Exception as exc:
+        print(f"DEBUG: Failed to load welcome settings: {exc}")
+        return WELCOME_ENABLED
+
+
+def save_welcome_settings():
+    try:
+        payload = {}
+        for guild_id, enabled in WELCOME_ENABLED.items():
+            guild_key = int(guild_id)
+            payload[str(guild_key)] = {
+                "enabled": bool(enabled),
+                "channel_id": int(WELCOME_CHANNELS.get(guild_key, WELCOME_CHANNEL_ID)),
+            }
+        with open(WELCOME_SETTINGS_FILE, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh)
+    except Exception as exc:
+        print(f"DEBUG: Failed to save welcome settings: {exc}")
+
+
+def get_asset_path(filename):
+    asset_path = os.path.join(ASSETS_DIR, filename)
+    if os.path.isfile(asset_path):
+        return asset_path
+    root_path = os.path.join(BASE_DIR, filename)
+    return root_path if os.path.isfile(root_path) else None
+
+async def set_bot_avatar_from_asset(bot):
+    """Use the repo's Paradox asset as the current bot avatar when available."""
+    avatar_candidates = [
+        "naruto.webp",
+        "bot_avatar.png",
+        "bot_avatar.jpg",
+        "bot_avatar.jpeg",
+        "bot_profile.png",
+        "profile.png",
+        "setup_header.png",
+        "paradox.png",
+        "paradox.jpg",
+        "all anime.webp",
+    ]
+
+    for filename in avatar_candidates:
+        avatar_path = get_asset_path(filename)
+        if not avatar_path or not os.path.isfile(avatar_path):
+            continue
+        try:
+            with open(avatar_path, "rb") as asset_file:
+                avatar_bytes = asset_file.read()
+            await bot.user.edit(avatar=avatar_bytes)
+            print(f"✅ Bot avatar updated from asset: {avatar_path}")
+            return True
+        except Exception as exc:
+            print(f"⚠️ Failed to set bot avatar from {avatar_path}: {exc}")
+    print("⚠️ No Paradox avatar asset found in project files.")
+    return False
+
+GAME_ROLE_MAP = {
+    "ALS": 1500199051952656578,
+    "AV": 1500198955940712468,
+>>>>>>> 5cbcdb9 (Convert carry to slash command and update images)
     "AE": 1541834030717075457,
 }
 
@@ -2011,6 +3858,7 @@ class ParadoxBot(commands.Bot):
         self.invite_tracker = {}  # user_id -> {"joined": [], "left": []}
 
     async def setup_hook(self):
+        await self.tree.sync()
         self.add_view(ParadoxTicketView())
         self.add_view(HelperApplicationView())
         self.add_view(ApplicationReviewView())
@@ -2201,7 +4049,7 @@ class ParadoxBot(commands.Bot):
             welcome_channel = guild.get_channel(welcome_channel_id)
             if welcome_channel and isinstance(welcome_channel, discord.TextChannel):
                 welcome_file = None
-                welcome_banner = get_asset_path("yuji.png")
+                welcome_banner = get_asset_path("all anime.webp")
                 if welcome_banner and os.path.exists(welcome_banner):
                     welcome_file = discord.File(welcome_banner, filename="welcome_banner.png")
 
@@ -2425,9 +4273,9 @@ async def testwelcome(ctx):
 
     welcome_banner = (
         get_asset_path("welcome_banner.png")
-        or get_asset_path("yuji.png")
+        or get_asset_path("all anime.webp")
         or get_asset_path("bot_avatar.png")
-        or get_asset_path("paradox img.png")
+        or get_asset_path("naruto.webp")
         or get_asset_path("setup_header.png")
     )
     file = None
@@ -2461,7 +4309,7 @@ async def testwelcome(ctx):
 async def setup(ctx):
     embed = V2Embed()
     file = None
-    setup_header_path = get_asset_path("paradox img.png") or get_asset_path("setup_header.png")
+    setup_header_path = get_asset_path("naruto.webp") or get_asset_path("setup_header.png")
     if os.path.exists(setup_header_path):
         file = discord.File(setup_header_path, filename="header.png")
         embed.set_image(url="attachment://header.png")
@@ -2493,7 +4341,7 @@ async def setup(ctx):
 async def helper_setup(ctx):
     embed = V2Embed()
     file = None
-    setup_header_path = get_asset_path("paradox img.png") or get_asset_path("setup_header.png")
+    setup_header_path = get_asset_path("naruto.webp") or get_asset_path("setup_header.png")
     if os.path.exists(setup_header_path):
         file = discord.File(setup_header_path, filename="header.png")
         embed.set_image(url="attachment://header.png")
@@ -4116,6 +5964,90 @@ async def searchup(ctx, member: discord.Member = None):
     
     await ctx.send(embed=embed, view=UserLookupView(member))
 
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def vouchesrestore(ctx):
+    """Restore all vouches from vouches.json and re-assign vouch counts."""
+    import json
+    backup_path = os.path.join(BASE_DIR, "vouches.json")
+    if not os.path.exists(backup_path):
+        await ctx.send("❌ No backup file found (`vouches.json`). Make sure it exists in the bot directory.")
+        return
+
+    try:
+        with open(backup_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Clear existing data
+        if USE_POSTGRESQL:
+            cursor.execute("DELETE FROM bonus_vouches")
+            cursor.execute("DELETE FROM vouch_records")
+        else:
+            conn.execute("DELETE FROM bonus_vouches")
+            conn.execute("DELETE FROM vouch_records")
+
+        restored_users = 0
+        restored_records = 0
+
+        # Restore bonus_vouches
+        for entry in data.get("bonus_vouches", []):
+            if USE_POSTGRESQL:
+                cursor.execute(
+                    "INSERT INTO bonus_vouches (user_id, total, games_json) VALUES (%s, %s, %s) ON CONFLICT (user_id) DO UPDATE SET total=EXCLUDED.total, games_json=EXCLUDED.games_json",
+                    (entry["user_id"], entry["total"], entry.get("games_json", "{}"))
+                )
+            else:
+                conn.execute(
+                    "INSERT OR REPLACE INTO bonus_vouches (user_id, total, games_json) VALUES (?, ?, ?)",
+                    (entry["user_id"], entry["total"], entry.get("games_json", "{}"))
+                )
+            restored_users += 1
+
+        # Restore vouch_records
+        for entry in data.get("vouch_records", []):
+            if USE_POSTGRESQL:
+                cursor.execute(
+                    "INSERT INTO vouch_records (booster_id, customer_id, game, feedback, star_rating, ticket_id, booster_name) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    (entry.get("booster_id"), entry.get("customer_id"), entry.get("game"),
+                     entry.get("feedback"), entry.get("star_rating", 5), entry.get("ticket_id"), entry.get("booster_name"))
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO vouch_records (booster_id, customer_id, game, feedback, star_rating, ticket_id, booster_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (entry.get("booster_id"), entry.get("customer_id"), entry.get("game"),
+                     entry.get("feedback"), entry.get("star_rating", 5), entry.get("ticket_id"), entry.get("booster_name"))
+                )
+            restored_records += 1
+
+        conn.commit()
+        conn.close()
+
+        embed = V2Embed(
+            title="✅ Vouches Restored",
+            description=f"Successfully restored vouches from `vouches.json`!",
+            color=discord.Color.green()
+        )
+        embed.add_field(name="👥 Users Restored", value=str(restored_users), inline=True)
+        embed.add_field(name="📋 Records Restored", value=str(restored_records), inline=True)
+        embed.set_footer(text=f"Restored by {ctx.author}")
+        await ctx.send(embed=embed)
+
+    except Exception as exc:
+        await ctx.send(f"❌ Failed to restore vouches: {exc}")
+
+@bot.tree.command(name="carry", description="Ping a user to check out the carry system")
+async def carry(interaction: discord.Interaction, member: discord.Member):
+    carry_channel = interaction.guild.get_channel(1500182686101405837)
+    helper_channel = interaction.guild.get_channel(1500182631441109135)
+    
+    carry_mention = carry_channel.mention if carry_channel else "#『💠』 carry-system"
+    helper_mention = helper_channel.mention if helper_channel else "#『💠』 helper-application"
+    
+    msg = f"{member.mention} If you need a carry or help check out {carry_mention} and you need 15 messages sent today to make a ticket and if you want to apply please go to {helper_mention} and once you apply a staff member will review shortly after 😁"
+    await interaction.response.send_message(msg)
 if __name__ == "__main__":
     if not TOKEN or TOKEN.lower().startswith("your_"):
         print("ERROR: DISCORD_TOKEN not found or is still using the example placeholder.")
