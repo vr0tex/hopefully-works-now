@@ -40,6 +40,7 @@ else:
 
 def get_db_connection():
     """Get a database connection (PostgreSQL or SQLite)."""
+    global USE_POSTGRESQL
     if USE_POSTGRESQL:
         try:
             conn = psycopg2.connect(DATABASE_URL)
@@ -47,6 +48,7 @@ def get_db_connection():
         except Exception as e:
             print(f"❌ PostgreSQL connection failed: {e}")
             print(f"⚠️ Falling back to SQLite")
+            USE_POSTGRESQL = False
             return sqlite3.connect(VOUCH_DB_PATH)
     else:
         return sqlite3.connect(VOUCH_DB_PATH)
@@ -4834,7 +4836,7 @@ async def vouch(ctx, target: discord.Member, game: str, *, feedback: str = "Fast
 @bot.command()
 async def myvouches(ctx):
     bonus = get_bonus_vouches(ctx.author.id)
-    total_vouches = bonus["total"]
+    total_vouches = get_total_vouches(ctx.author.id)
     main_game = max(bonus["games"], key=bonus["games"].get) if bonus["games"] else "Unknown"
     latest_vouch = None
 
