@@ -543,42 +543,12 @@ def restore_vouches_from_backup(backup_path):
 
 
 def get_total_vouches(user_id, minimum_total=0):
-    total_vouches = get_bonus_vouches(user_id)["total"]
-
-    try:
-        conn = get_db_connection()
-        
-        if USE_POSTGRESQL:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT COUNT(*) FROM vouch_records WHERE booster_id = %s",
-                (str(user_id),),
-            )
-            local_total = cursor.fetchone()[0]
-            cursor.close()
-        else:
-            local_total = conn.execute(
-                "SELECT COUNT(*) FROM vouch_records WHERE booster_id = ?",
-                (str(user_id),),
-            ).fetchone()[0]
-        
-        conn.close()
-    except Exception as exc:
-        print(f"Error querying local vouches: {exc}")
-        local_total = 0
-
-    database_total = 0
-    if supabase:
-        try:
-            result = supabase.table("vouches").select("id", count="exact").eq(
-                "booster_id", str(user_id)
-            ).execute()
-            returned_rows = len(result.data or [])
-            database_total = max(result.count or 0, returned_rows)
-        except Exception as exc:
-            print(f"Error querying Supabase vouches: {exc}")
-
-    total = total_vouches + local_total + database_total
+    """Get the total vouch count for a user.
+    
+    bonus_vouches is the single source of truth for counts.
+    vouch_records and Supabase are detailed logs only.
+    """
+    total = get_bonus_vouches(user_id)["total"]
     if total < minimum_total:
         return minimum_total
     return total
@@ -995,7 +965,9 @@ class VouchModal(discord.ui.Modal, title="Vouch Feedback"):
             source='local',
         )
 
-        vouch_saved = False
+        # Always increment bonus_vouches as the persistent counter
+        add_bonus_vouches(booster.id, 1, game)
+
         if supabase:
             try:
                 supabase.table("vouches").insert({
@@ -1008,12 +980,8 @@ class VouchModal(discord.ui.Modal, title="Vouch Feedback"):
                     "star_rating": star_count,
                     "ticket_id": str(interaction.channel.id),
                 }).execute()
-                vouch_saved = True
             except Exception as e:
                 print(f"Error saving to Supabase: {e}")
-
-        if not vouch_saved and local_vouch_id is None:
-            add_bonus_vouches(booster.id, 1, game)
 
         if VOUCH_CHANNEL_ID != 0:
             vouch_channel = interaction.guild.get_channel(VOUCH_CHANNEL_ID)
@@ -2377,42 +2345,12 @@ def restore_vouches_from_backup(backup_path):
 
 
 def get_total_vouches(user_id, minimum_total=0):
-    total_vouches = get_bonus_vouches(user_id)["total"]
-
-    try:
-        conn = get_db_connection()
-        
-        if USE_POSTGRESQL:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT COUNT(*) FROM vouch_records WHERE booster_id = %s",
-                (str(user_id),),
-            )
-            local_total = cursor.fetchone()[0]
-            cursor.close()
-        else:
-            local_total = conn.execute(
-                "SELECT COUNT(*) FROM vouch_records WHERE booster_id = ?",
-                (str(user_id),),
-            ).fetchone()[0]
-        
-        conn.close()
-    except Exception as exc:
-        print(f"Error querying local vouches: {exc}")
-        local_total = 0
-
-    database_total = 0
-    if supabase:
-        try:
-            result = supabase.table("vouches").select("id", count="exact").eq(
-                "booster_id", str(user_id)
-            ).execute()
-            returned_rows = len(result.data or [])
-            database_total = max(result.count or 0, returned_rows)
-        except Exception as exc:
-            print(f"Error querying Supabase vouches: {exc}")
-
-    total = total_vouches + local_total + database_total
+    """Get the total vouch count for a user.
+    
+    bonus_vouches is the single source of truth for counts.
+    vouch_records and Supabase are detailed logs only.
+    """
+    total = get_bonus_vouches(user_id)["total"]
     if total < minimum_total:
         return minimum_total
     return total
@@ -2829,7 +2767,9 @@ class VouchModal(discord.ui.Modal, title="Vouch Feedback"):
             source='local',
         )
 
-        vouch_saved = False
+        # Always increment bonus_vouches as the persistent counter
+        add_bonus_vouches(booster.id, 1, game)
+
         if supabase:
             try:
                 supabase.table("vouches").insert({
@@ -2842,12 +2782,8 @@ class VouchModal(discord.ui.Modal, title="Vouch Feedback"):
                     "star_rating": star_count,
                     "ticket_id": str(interaction.channel.id),
                 }).execute()
-                vouch_saved = True
             except Exception as e:
                 print(f"Error saving to Supabase: {e}")
-
-        if not vouch_saved and local_vouch_id is None:
-            add_bonus_vouches(booster.id, 1, game)
 
         if VOUCH_CHANNEL_ID != 0:
             vouch_channel = interaction.guild.get_channel(VOUCH_CHANNEL_ID)
@@ -4809,7 +4745,9 @@ async def vouch(ctx, target: discord.Member, game: str, *, feedback: str = "Fast
         source='local',
     )
 
-    db_success = False
+    # Always increment bonus_vouches as the persistent counter
+    add_bonus_vouches(target.id, 1, game)
+
     if supabase:
         try:
             supabase.table("vouches").insert({
@@ -4822,16 +4760,12 @@ async def vouch(ctx, target: discord.Member, game: str, *, feedback: str = "Fast
                 "star_rating": 5,
                 "ticket_id": str(ctx.channel.id),
             }).execute()
-            db_success = True
         except Exception as e:
             print(f"Vouch error (Supabase down, using local vouches): {e}")
 
     total_vouches = get_total_vouches(target.id, previous_total + 1)
     embed = create_vouch_embed(ctx.author, target, game, feedback, total_vouches, ctx.channel.id)
-    if supabase and db_success:
-        await ctx.send(embed=embed)
-    else:
-        await ctx.send(content="⚠️ Database not connected or offline (Local vouch saved securely)", embed=embed)
+    await ctx.send(embed=embed)
 
 @bot.command()
 async def myvouches(ctx):
@@ -4840,37 +4774,46 @@ async def myvouches(ctx):
     main_game = max(bonus["games"], key=bonus["games"].get) if bonus["games"] else "Unknown"
     latest_vouch = None
 
+    # Try to get latest vouch details from local DB
     try:
-        conn = sqlite3.connect(VOUCH_DB_PATH)
-        local_rows = conn.execute(
-            "SELECT booster_id, customer_id, game, feedback, star_rating, ticket_id, booster_name, created_at FROM vouch_records WHERE booster_id = ? ORDER BY id DESC",
-            (str(ctx.author.id),),
-        ).fetchall()
+        conn = get_db_connection()
+        if USE_POSTGRESQL:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT booster_id, customer_id, game, feedback, star_rating, ticket_id, booster_name, created_at FROM vouch_records WHERE booster_id = %s ORDER BY id DESC LIMIT 1",
+                (str(ctx.author.id),),
+            )
+            row = cursor.fetchone()
+            cursor.close()
+        else:
+            row = conn.execute(
+                "SELECT booster_id, customer_id, game, feedback, star_rating, ticket_id, booster_name, created_at FROM vouch_records WHERE booster_id = ? ORDER BY id DESC LIMIT 1",
+                (str(ctx.author.id),),
+            ).fetchone()
         conn.close()
-        if local_rows:
+        if row:
             latest_vouch = {
-                "booster_id": local_rows[0][0],
-                "customer_id": local_rows[0][1],
-                "game": local_rows[0][2],
-                "feedback": local_rows[0][3],
-                "star_rating": local_rows[0][4],
-                "ticket_id": local_rows[0][5],
-                "booster_name": local_rows[0][6],
-                "created_at": local_rows[0][7],
+                "booster_id": row[0],
+                "customer_id": row[1],
+                "game": row[2],
+                "feedback": row[3],
+                "star_rating": row[4],
+                "ticket_id": row[5],
+                "booster_name": row[6],
+                "created_at": row[7],
             }
-            total_vouches += len(local_rows)
             main_game = latest_vouch.get("game", main_game)
     except Exception as e:
         print(f"Myvouches local DB error: {e}")
 
-    if supabase:
+    # Try Supabase for latest vouch details if not found locally
+    if not latest_vouch and supabase:
         try:
             result = supabase.table("vouches").select("*").eq(
                 "booster_id", str(ctx.author.id)
-            ).order("id", desc=True).execute()
+            ).order("id", desc=True).limit(1).execute()
             vouch_list = result.data or []
-            total_vouches += len(vouch_list)
-            if not latest_vouch and vouch_list:
+            if vouch_list:
                 latest_vouch = vouch_list[0]
                 main_game = latest_vouch.get("game", main_game)
         except Exception as e:
@@ -5048,25 +4991,13 @@ async def removevouches(ctx, target: discord.Member, amount: int, game: str = "A
 @bot.command()
 async def profile(ctx, target: discord.Member = None):
     target = target or ctx.author
-    total_vouches = 0
-    game_count = {}
     
-    # Add bonus vouches first
+    # Use bonus_vouches as the single source of truth for counts
     bonus = get_bonus_vouches(target.id)
-    total_vouches += bonus["total"]
+    total_vouches = get_total_vouches(target.id)
+    game_count = {}
     for g, count in bonus["games"].items():
         game_count[g] = game_count.get(g, 0) + count
-
-    if supabase:
-        try:
-            res = supabase.table("vouches").select("*").eq("booster_id", str(target.id)).execute()
-            vouch_list = res.data
-            total_vouches += len(vouch_list)
-            for vouch in vouch_list:
-                g = vouch["game"]
-                game_count[g] = game_count.get(g, 0) + 1
-        except Exception as e:
-            print(f"Profile error (Supabase down, fallback to local): {e}")
 
     if total_vouches == 0:
         await ctx.send(f"**{target.name}** hasn't earned any vouches yet!")
