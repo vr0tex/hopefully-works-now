@@ -5963,17 +5963,18 @@ async def vouchesrestore(ctx):
 
         # Restore vouch_records
         for entry in data.get("vouch_records", []):
+            created_at = entry.get("created_at") or datetime.now().isoformat()
             if USE_POSTGRESQL:
                 cursor.execute(
-                    "INSERT INTO vouch_records (booster_id, customer_id, game, feedback, star_rating, ticket_id, booster_name) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    "INSERT INTO vouch_records (booster_id, customer_id, game, feedback, star_rating, ticket_id, booster_name, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
                     (entry.get("booster_id"), entry.get("customer_id"), entry.get("game"),
-                     entry.get("feedback"), entry.get("star_rating", 5), entry.get("ticket_id"), entry.get("booster_name"))
+                     entry.get("feedback"), entry.get("star_rating", 5), entry.get("ticket_id"), entry.get("booster_name"), created_at)
                 )
             else:
                 conn.execute(
-                    "INSERT INTO vouch_records (booster_id, customer_id, game, feedback, star_rating, ticket_id, booster_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO vouch_records (booster_id, customer_id, game, feedback, star_rating, ticket_id, booster_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     (entry.get("booster_id"), entry.get("customer_id"), entry.get("game"),
-                     entry.get("feedback"), entry.get("star_rating", 5), entry.get("ticket_id"), entry.get("booster_name"))
+                     entry.get("feedback"), entry.get("star_rating", 5), entry.get("ticket_id"), entry.get("booster_name"), created_at)
                 )
             restored_records += 1
 
