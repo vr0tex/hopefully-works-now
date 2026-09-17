@@ -1,0 +1,35 @@
+{
+  "timestamp": "2026-09-12T14:19:36.634947+00:00",
+  "database": "SQLite",
+  "bonus_vouches": [
+    {
+      "user_id": "918231907337134141",
+      "total": 3,
+      "games_json": "{\"ALS\": 1, \"AV\": 1, \"AG\": 1}"
+    },
+    {
+      "user_id": "694440398793474058",
+      "total": 19,
+      "games_json": "{\"SP\": 19}"
+    },
+    {
+      "user_id": "1320822805692153987",
+      "total": 4,
+      "games_json": "{\"SP\": 2, \"AV\": 1, \"AG\": 1}"
+    }
+  ],
+  "vouch_records": [
+    {
+      "id": 1,
+      "booster_id": "user_42",
+      "customer_id": "customer_99",
+      "game": "ALS",
+      "feedback": "Great carry",
+      "star_rating": 5,
+      "ticket_id": "123",
+      "booster_name": "Booster",
+      "created_at": "2026-09-12T14:19:36.623280+00:00",
+      "source": "local"
+    }
+  ]
+}
