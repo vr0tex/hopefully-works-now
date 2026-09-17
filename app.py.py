@@ -49,9 +49,9 @@ def get_db_connection():
             print(f"❌ PostgreSQL connection failed: {e}")
             print(f"⚠️ Falling back to SQLite")
             USE_POSTGRESQL = False
-            return sqlite3.connect(VOUCH_DB_PATH)
+            return sqlite3.connect(VOUCH_DB_PATH, timeout=20.0)
     else:
-        return sqlite3.connect(VOUCH_DB_PATH)
+        return sqlite3.connect(VOUCH_DB_PATH, timeout=20.0)
 
 def init_vouch_database():
     """Initialize vouches database (PostgreSQL or SQLite)."""
@@ -92,7 +92,7 @@ def init_vouch_database():
             print(f"❌ Failed to initialize PostgreSQL: {e}")
     else:
         # SQLite setup
-        conn = sqlite3.connect(VOUCH_DB_PATH)
+        conn = sqlite3.connect(VOUCH_DB_PATH, timeout=20.0)
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS bonus_vouches (
@@ -151,7 +151,7 @@ def init_vouch_database():
                             cursor.close()
                             conn.close()
                         else:
-                            conn = sqlite3.connect(VOUCH_DB_PATH)
+                            conn = sqlite3.connect(VOUCH_DB_PATH, timeout=20.0)
                             conn.execute(
                                 """
                                 INSERT INTO bonus_vouches (user_id, total, games_json)
@@ -1885,9 +1885,9 @@ def get_db_connection():
         except Exception as e:
             print(f"❌ PostgreSQL connection failed: {e}")
             print(f"⚠️ Falling back to SQLite")
-            return sqlite3.connect(VOUCH_DB_PATH)
+            return sqlite3.connect(VOUCH_DB_PATH, timeout=20.0)
     else:
-        return sqlite3.connect(VOUCH_DB_PATH)
+        return sqlite3.connect(VOUCH_DB_PATH, timeout=20.0)
 
 def init_vouch_database():
     """Initialize vouches database (PostgreSQL or SQLite)."""
@@ -1928,7 +1928,7 @@ def init_vouch_database():
             print(f"❌ Failed to initialize PostgreSQL: {e}")
     else:
         # SQLite setup
-        conn = sqlite3.connect(VOUCH_DB_PATH)
+        conn = sqlite3.connect(VOUCH_DB_PATH, timeout=20.0)
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS bonus_vouches (
@@ -1987,7 +1987,7 @@ def init_vouch_database():
                             cursor.close()
                             conn.close()
                         else:
-                            conn = sqlite3.connect(VOUCH_DB_PATH)
+                            conn = sqlite3.connect(VOUCH_DB_PATH, timeout=20.0)
                             conn.execute(
                                 """
                                 INSERT INTO bonus_vouches (user_id, total, games_json)
