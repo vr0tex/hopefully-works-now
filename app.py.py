@@ -5929,12 +5929,17 @@ async def vouchesrestore(ctx):
         await ctx.send("❌ No backup file found (`vouches.json`). Make sure it exists in the bot directory.")
         return
 
+    conn = None
+    cursor = None
     try:
         with open(backup_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         conn = get_db_connection()
-        cursor = conn.cursor()
+        if USE_POSTGRESQL:
+            cursor = conn.cursor()
+        else:
+            cursor = None
 
         # Clear existing data
         if USE_POSTGRESQL:
@@ -5979,7 +5984,6 @@ async def vouchesrestore(ctx):
             restored_records += 1
 
         conn.commit()
-        conn.close()
 
         embed = V2Embed(
             title="✅ Vouches Restored",
@@ -5992,7 +5996,14 @@ async def vouchesrestore(ctx):
         await ctx.send(embed=embed)
 
     except Exception as exc:
+        if conn:
+            conn.rollback()
         await ctx.send(f"❌ Failed to restore vouches: {exc}")
+    finally:
+        if cursor and USE_POSTGRESQL:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @bot.command()
 @commands.has_permissions(administrator=True)
