@@ -5993,6 +5993,22 @@ async def vouchesrestore(ctx):
     except Exception as exc:
         await ctx.send(f"❌ Failed to restore vouches: {exc}")
 
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def members(ctx):
+    """View the number of members in the server."""
+    online = sum(1 for m in ctx.guild.members if m.status != discord.Status.offline)
+    total = ctx.guild.member_count
+    bots = sum(1 for m in ctx.guild.members if m.bot)
+    
+    embed = V2Embed(
+        title="👥 Server Members",
+        description=f"**Total Members:** {total}\n**Online Members:** {online}\n**Humans:** {total - bots}\n**Bots:** {bots}",
+        color=discord.Color.blue()
+    )
+    embed.set_footer(text=f"Requested by {ctx.author.name}", icon_url=ctx.author.display_avatar.url if ctx.author.display_avatar else None)
+    await ctx.send(embed=embed)
+
 @bot.tree.command(name="carry", description="Ping a user to check out the carry system")
 async def carry(interaction: discord.Interaction, member: discord.Member):
     carry_channel = interaction.guild.get_channel(1500182686101405837)
