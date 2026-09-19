@@ -566,7 +566,6 @@ def create_vouch_embed(customer, booster, game, feedback, total_vouches, ticket_
         embed.add_field(name="🎟️ Ticket", value=f"#{ticket_id}", inline=False)
     else:
         embed.add_field(name="🎮 Main Game", value=game, inline=False)
-    embed.add_field(name="🏆 Total Vouches", value=str(total_vouches), inline=False)
     embed.add_field(
         name="🕘 Registered",
         value=discord.utils.format_dt(datetime.now(timezone.utc), style="F"),
@@ -6031,6 +6030,36 @@ async def carry(interaction: discord.Interaction, member: discord.Member):
     
     msg = f"{member.mention} If you need a carry or help check out {carry_mention} and you need 15 messages sent today to make a ticket and if you want to apply please go to {helper_mention} and once you apply a staff member will review shortly after 😁"
     await interaction.response.send_message(msg)
+
+@bot.tree.command(name="vouches", description="Check how many vouches a user has received")
+async def slash_vouches(interaction: discord.Interaction, user: discord.Member):
+    """Look up the total vouch count for a server member. Data is saved persistently across restarts."""
+    await interaction.response.defer(ephemeral=True)
+    try:
+        total = get_total_vouches(user.id)
+        bonus_data = get_bonus_vouches(user.id)
+        games = bonus_data.get("games", {})
+
+        embed = discord.Embed(
+            title=f"⭐ Vouch Count — {user.display_name}",
+            color=0xF4D03F
+        )
+        embed.set_thumbnail(url=user.display_avatar.url)
+        embed.add_field(name="👤 User", value=user.mention, inline=False)
+        embed.add_field(name="🏆 Total Vouches", value=f"**{total:,}**", inline=False)
+
+        if games:
+            games_sorted = sorted(games.items(), key=lambda x: x[1], reverse=True)
+            games_str = "\n".join(f"• **{game}**: {count:,}" for game, count in games_sorted)
+            embed.add_field(name="🎮 Vouches by Game", value=games_str, inline=False)
+
+        if total == 0:
+            embed.description = f"{user.mention} hasn't received any vouches yet."
+
+        embed.set_footer(text="Vouch data is saved and persists across restarts")
+        await interaction.followup.send(embed=embed, ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error fetching vouches: {e}", ephemeral=True)
 if __name__ == "__main__":
     if not TOKEN or TOKEN.lower().startswith("your_"):
         print("ERROR: DISCORD_TOKEN not found or is still using the example placeholder.")
