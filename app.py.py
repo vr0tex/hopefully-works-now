@@ -22,6 +22,8 @@ except ImportError:
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 WELCOME_CHANNEL_ID = 1500185807544254734
+BOOSTER_CHANNEL_ID = int(os.getenv('BOOSTER_CHANNEL_ID', 1500185876368593117))
+BOOSTER_ROLE_ID = int(os.getenv('BOOSTER_ROLE_ID', 1500214645041139936))
 WELCOME_SETTINGS_FILE = os.path.join(BASE_DIR, "welcome_settings.json")
 WELCOME_ENABLED = {}
 WELCOME_CHANNELS = {}
@@ -731,6 +733,135 @@ def get_message_count_last_24h(user_id):
     
     return len(pruned)
 
+def has_server_tag(member) -> bool:
+    """Check if a member is using the server tag (skull + PRDX, or PRDX in tag/name/status)."""
+    if not member:
+        return False
+    
+    # 1. Check display_name, name, global_name, nick
+    names_to_check = [
+        getattr(member, 'display_name', '') or '',
+        getattr(member, 'name', '') or '',
+        getattr(member, 'global_name', '') or '',
+        getattr(member, 'nick', '') or '',
+    ]
+    for n in names_to_check:
+        if 'prdx' in n.lower():
+            return True
+
+    # 2. Check activities (custom status text, status emoji)
+    activities = getattr(member, 'activities', ())
+    for act in activities:
+        state = getattr(act, 'state', '') or ''
+        name = getattr(act, 'name', '') or ''
+        if 'prdx' in state.lower() or 'prdx' in name.lower():
+            return True
+        emoji = getattr(act, 'emoji', None)
+        if emoji and 'prdx' in str(emoji).lower():
+            return True
+
+    # 3. Check Discord Clan tag if present on Member / User
+    for obj in (member, getattr(member, '_user', None)):
+        if not obj:
+            continue
+        clan = getattr(obj, 'clan', None)
+        if clan:
+            tag = getattr(clan, 'tag', None) or str(clan)
+            if 'prdx' in str(tag).lower():
+                return True
+        clan_tag = getattr(obj, 'clan_tag', None)
+        if clan_tag and 'prdx' in str(clan_tag).lower():
+            return True
+        if hasattr(obj, '_to_minimal_user_json'):
+            try:
+                raw_json = obj._to_minimal_user_json()
+                if 'prdx' in str(raw_json).lower():
+                    return True
+            except Exception:
+                pass
+
+    # 4. Check roles in case a server tag role is assigned
+    roles = getattr(member, 'roles', [])
+    for r in roles:
+        r_name = getattr(r, 'name', '').lower()
+        if 'prdx' in r_name or 'server tag' in r_name:
+            return True
+
+    return False
+
+def is_booster_member(member) -> bool:
+    """Check if a member is a server booster."""
+    if not member:
+        return False
+    if getattr(member, 'premium_since', None) is not None:
+        return True
+    roles = getattr(member, 'roles', [])
+    for r in roles:
+        if getattr(r, 'id', None) == BOOSTER_ROLE_ID:
+            return True
+        r_name = getattr(r, 'name', '').lower()
+        if r_name == "server booster" or "booster" in r_name:
+            return True
+    return False
+
+_recent_boosters = {}  # member_id -> timestamp
+
+async def send_booster_welcome_message(member: discord.Member, channel: discord.TextChannel = None, bypass_cooldown: bool = False):
+    """Send a booster announcement card in the booster channel."""
+    try:
+        now = datetime.now(timezone.utc).timestamp()
+        if not bypass_cooldown:
+            last_sent = _recent_boosters.get(member.id, 0)
+            if now - last_sent < 60:
+                return
+            _recent_boosters[member.id] = now
+
+        target_channel = channel
+        if not target_channel:
+            guild = getattr(member, 'guild', None)
+            if guild:
+                target_channel = guild.get_channel(BOOSTER_CHANNEL_ID)
+        
+        if not target_channel or not isinstance(target_channel, discord.TextChannel):
+            print(f"⚠️ Booster channel {BOOSTER_CHANNEL_ID} not found or not a text channel.")
+            return
+
+        embed = discord.Embed(
+            color=discord.Color.from_rgb(0, 168, 252),
+            description=(
+                f"# Thanks for boosting,\n"
+                f"### {member.mention}\n"
+                f"### (@{member.name})\n\n"
+                f"You Are Now Part Of The Booster Club\n"
+                f"Welcome\n\n"
+                f"### Carrier Benefits\n"
+                f"🔮 Extra support on every ticket\n"
+                f"🔮 Bypass message requirements\n\n"
+                f"### Server Benefits\n"
+                f"🔮 30% XP boost for faster leveling\n"
+                f"🔮 Post images, GIFs & edit nickname\n"
+                f"🔮 2x giveaway entries"
+            )
+        )
+        embed.set_author(name="Hyperion's Boosters Message")
+        if member.display_avatar:
+            embed.set_thumbnail(url=member.display_avatar.url)
+
+        # Use same banner as welcome message banner
+        banner_file = None
+        welcome_banner = get_asset_path("all anime.webp")
+        if welcome_banner and os.path.exists(welcome_banner):
+            banner_file = discord.File(welcome_banner, filename="booster_banner.png")
+            embed.set_image(url="attachment://booster_banner.png")
+
+        if banner_file:
+            await target_channel.send(content=f"{member.mention}", file=banner_file, embed=embed)
+        else:
+            await target_channel.send(content=f"{member.mention}", embed=embed)
+        print(f"✅ Booster message sent for {member.name} in channel {target_channel.id}")
+    except Exception as e:
+        print(f"❌ Error sending booster message for {member}: {e}")
+
 USER_TICKETS_FILE = "user_tickets.json"
 
 def increment_ticket_count(user_id):
@@ -834,6 +965,8 @@ load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 CATEGORY_ID = int(os.getenv('CATEGORY_ID', 0))
 STAFF_ROLE_ID = int(os.getenv('STAFF_ROLE_ID', 0))
+BOOSTER_ROLE_ID = int(os.getenv('BOOSTER_ROLE_ID', 1500214645041139936))
+BOOSTER_CHANNEL_ID = int(os.getenv('BOOSTER_CHANNEL_ID', 1500185876368593117))
 VOUCH_CHANNEL_ID = int(os.getenv('VOUCH_CHANNEL_ID', 0))
 HELPER_CHANNEL_ID = int(os.getenv('HELPER_CHANNEL_ID', 0))
 
@@ -1376,15 +1509,25 @@ class ParadoxTicketView(discord.ui.View):
 
     async def select_callback(self, interaction: discord.Interaction):
         try:
-            # Check messages requirement (exempt admins and staff)
+            # Check messages requirement (exempt admins, staff, and boosters)
             is_staff = interaction.user.guild_permissions.administrator or any(role.id == STAFF_ROLE_ID for role in interaction.user.roles)
-            if not is_staff:
+            is_booster = is_booster_member(interaction.user)
+            if not is_staff and not is_booster:
                 msg_count = get_message_count_last_24h(interaction.user.id)
-                if msg_count < 15:
+                has_tag = has_server_tag(interaction.user)
+                required_messages = 15 if has_tag else 30
+
+                if msg_count < required_messages:
+                    tag_info = (
+                        "✅ *You have the **PRDX** server tag active! Your required message count is reduced to **15**.*"
+                        if has_tag else
+                        "💡 *Tip: Add the **PRDX** server tag (💀 PRDX) to your profile/status to reduce your requirement to **15 messages**, or boost the server to bypass completely!*"
+                    )
                     await interaction.response.send_message(
                         f"❌ **Ticket Access Denied**\n\n"
-                        f"You must have sent at least **15 messages** in the server in the last 24 hours to open a ticket.\n"
-                        f"Current messages sent: **{msg_count}/15**\n\n"
+                        f"You must have sent at least **{required_messages} messages** in the server in the last 24 hours to open a ticket.\n"
+                        f"Current messages sent: **{msg_count}/{required_messages}**\n\n"
+                        f"{tag_info}\n\n"
                         f"Message count resets on a rolling 24-hour basis.",
                         ephemeral=True
                     )
@@ -2635,6 +2778,8 @@ load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 CATEGORY_ID = int(os.getenv('CATEGORY_ID', 0))
 STAFF_ROLE_ID = int(os.getenv('STAFF_ROLE_ID', 0))
+BOOSTER_ROLE_ID = int(os.getenv('BOOSTER_ROLE_ID', 1500214645041139936))
+BOOSTER_CHANNEL_ID = int(os.getenv('BOOSTER_CHANNEL_ID', 1500185876368593117))
 VOUCH_CHANNEL_ID = int(os.getenv('VOUCH_CHANNEL_ID', 0))
 HELPER_CHANNEL_ID = int(os.getenv('HELPER_CHANNEL_ID', 0))
 
@@ -3177,15 +3322,25 @@ class ParadoxTicketView(discord.ui.View):
 
     async def select_callback(self, interaction: discord.Interaction):
         try:
-            # Check messages requirement (exempt admins and staff)
+            # Check messages requirement (exempt admins, staff, and boosters)
             is_staff = interaction.user.guild_permissions.administrator or any(role.id == STAFF_ROLE_ID for role in interaction.user.roles)
-            if not is_staff:
+            is_booster = is_booster_member(interaction.user)
+            if not is_staff and not is_booster:
                 msg_count = get_message_count_last_24h(interaction.user.id)
-                if msg_count < 15:
+                has_tag = has_server_tag(interaction.user)
+                required_messages = 15 if has_tag else 30
+
+                if msg_count < required_messages:
+                    tag_info = (
+                        "✅ *You have the **PRDX** server tag active! Your required message count is reduced to **15**.*"
+                        if has_tag else
+                        "💡 *Tip: Add the **PRDX** server tag (💀 PRDX) to your profile/status to reduce your requirement to **15 messages**, or boost the server to bypass completely!*"
+                    )
                     await interaction.response.send_message(
                         f"❌ **Ticket Access Denied**\n\n"
-                        f"You must have sent at least **15 messages** in the server in the last 24 hours to open a ticket.\n"
-                        f"Current messages sent: **{msg_count}/15**\n\n"
+                        f"You must have sent at least **{required_messages} messages** in the server in the last 24 hours to open a ticket.\n"
+                        f"Current messages sent: **{msg_count}/{required_messages}**\n\n"
+                        f"{tag_info}\n\n"
                         f"Message count resets on a rolling 24-hour basis.",
                         ephemeral=True
                     )
@@ -4071,6 +4226,17 @@ class ParadoxBot(commands.Bot):
                 data["left"].append(member.id)
                 break
 
+    async def on_member_update(self, before: discord.Member, after: discord.Member):
+        # Detect server boost
+        became_booster = False
+        if before.premium_since is None and after.premium_since is not None:
+            became_booster = True
+        elif BOOSTER_ROLE_ID not in [r.id for r in before.roles] and BOOSTER_ROLE_ID in [r.id for r in after.roles]:
+            became_booster = True
+
+        if became_booster:
+            await send_booster_welcome_message(after)
+
     async def on_message(self, message):
         global _last_message_time, _keyword_cooldowns
         
@@ -4087,6 +4253,15 @@ class ParadoxBot(commands.Bot):
             # Track messages sent in the server (not DMs)
             if message.guild is not None:
                 track_message(message.author.id)
+
+            # Check for Discord system boost message
+            if message.guild is not None and message.type in (
+                discord.MessageType.premium_guild_subscription,
+                discord.MessageType.premium_guild_tier_1,
+                discord.MessageType.premium_guild_tier_2,
+                discord.MessageType.premium_guild_tier_3,
+            ):
+                await send_booster_welcome_message(message.author)
 
             # Protect the special name: Use cooldown to reduce CPU (only check once per 2 seconds per user)
             user_id = message.author.id
@@ -5373,26 +5548,48 @@ async def botchanges(ctx):
 # USER LOOKUP SYSTEM (!searchup)
 # ──────────────────────────────────────────
 
+def is_jmod_or_above(member) -> bool:
+    """Check if member has JMod or above rank/permissions."""
+    if not member:
+        return False
+    perms = getattr(member, 'guild_permissions', None)
+    if perms:
+        if perms.administrator:
+            return True
+        if perms.manage_messages or perms.moderate_members or perms.kick_members or perms.ban_members or perms.manage_guild:
+            return True
+
+    roles = getattr(member, 'roles', [])
+    if any(getattr(r, 'id', None) == STAFF_ROLE_ID for r in roles):
+        return True
+
+    role_keywords = [
+        "jmod", "junior mod", "jr mod", "jr. mod", "junior moderator", "jr moderator",
+        "moderator", "trial mod", "senior mod", "sr mod", "head mod", "lead mod",
+        "admin", "administrator", "manager", "coowner", "co-owner", "owner",
+        "vr0tex the goat"
+    ]
+    for role in roles:
+        r_name = getattr(role, 'name', '').lower().strip()
+        if re.search(r'\bmod\b', r_name):
+            return True
+        for kw in role_keywords:
+            if kw in r_name:
+                return True
+    return False
+
 def is_lookup_allowed():
     async def predicate(ctx):
-        if ctx.author.guild_permissions.administrator:
+        if is_jmod_or_above(ctx.author):
             return True
-        allowed_roles = {"coowner", "vr0tex the goat", "moderator", "senior moderator", "head moderator", "admin", "administrator"}
-        for role in ctx.author.roles:
-            if role.name.lower() in allowed_roles:
-                return True
-        raise commands.MissingPermissions(["Lookup role requirement not met."])
+        raise commands.MissingPermissions(["Requires Junior Moderator (JMod) or above role."])
     return commands.check(predicate)
 
 
 def is_admin_or_moderator():
     async def predicate(ctx):
-        if ctx.author.guild_permissions.administrator:
+        if is_jmod_or_above(ctx.author):
             return True
-        # allow roles that include the word 'moderator'
-        for role in ctx.author.roles:
-            if 'moderator' in role.name.lower():
-                return True
         raise commands.MissingPermissions(['Administrator or Moderator required.'])
     return commands.check(predicate)
 
@@ -5861,7 +6058,9 @@ async def searchup(ctx, member: discord.Member = None):
     
     # 6. Status
     is_timed_out = "Yes" if (member.is_timed_out() if hasattr(member, "is_timed_out") else False) else "No"
-    is_booster = "Yes" if member.premium_since else "No"
+    is_booster = "Yes" if is_booster_member(member) else "No"
+    has_tag = "Yes (PRDX)" if has_server_tag(member) else "No"
+    messages_24h = get_message_count_last_24h(member.id)
     
     # Construct Embed
     embed = V2Embed(
@@ -5906,7 +6105,9 @@ async def searchup(ctx, member: discord.Member = None):
     
     status_val = (
         f"**Timed Out:** {is_timed_out}\n"
-        f"**Booster:** {is_booster}"
+        f"**Booster:** {is_booster}\n"
+        f"**Server Tag:** {has_tag}\n"
+        f"**Messages (24h):** {messages_24h}"
     )
     embed.add_field(name="Status", value=status_val, inline=True)
     
@@ -5916,6 +6117,19 @@ async def searchup(ctx, member: discord.Member = None):
     )
     
     await ctx.send(embed=embed, view=UserLookupView(member))
+
+@bot.command(name="testbooster")
+async def testbooster(ctx, member: discord.Member = None):
+    """Test the booster welcome message in the booster channel (JMod and above)."""
+    if not is_jmod_or_above(ctx.author):
+        await ctx.send("❌ You don't have permission to use this command.")
+        return
+    target = member or ctx.author
+    channel = ctx.guild.get_channel(BOOSTER_CHANNEL_ID) or ctx.channel
+    await send_booster_welcome_message(target, channel=channel, bypass_cooldown=True)
+    if channel != ctx.channel:
+        await ctx.send(f"✅ Sent test booster message for {target.mention} in {channel.mention}!")
+
 
 @bot.command()
 @commands.has_permissions(administrator=True)
