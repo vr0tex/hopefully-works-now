@@ -813,7 +813,7 @@ async def send_booster_welcome_message(member: discord.Member, channel: discord.
         if not bypass_cooldown:
             last_sent = _recent_boosters.get(member.id, 0)
             if now - last_sent < 60:
-                return
+                return False, "Rate limited (sent within last 60s)"
             _recent_boosters[member.id] = now
 
         target_channel = channel
@@ -821,10 +821,16 @@ async def send_booster_welcome_message(member: discord.Member, channel: discord.
             guild = getattr(member, 'guild', None)
             if guild:
                 target_channel = guild.get_channel(BOOSTER_CHANNEL_ID)
+                if not target_channel:
+                    try:
+                        target_channel = await guild.fetch_channel(BOOSTER_CHANNEL_ID)
+                    except Exception:
+                        pass
         
         if not target_channel or not isinstance(target_channel, discord.TextChannel):
-            print(f"⚠️ Booster channel {BOOSTER_CHANNEL_ID} not found or not a text channel.")
-            return
+            err_msg = f"Booster channel {BOOSTER_CHANNEL_ID} not found or not a text channel."
+            print(f"⚠️ {err_msg}")
+            return False, err_msg
 
         embed = discord.Embed(
             color=discord.Color.from_rgb(0, 168, 252),
@@ -843,7 +849,7 @@ async def send_booster_welcome_message(member: discord.Member, channel: discord.
                 f"🔮 2x giveaway entries"
             )
         )
-        embed.set_author(name="Hyperion's Boosters Message")
+        embed.set_author(name="Paradox Boosters Message")
         if member.display_avatar:
             embed.set_thumbnail(url=member.display_avatar.url)
 
@@ -859,8 +865,10 @@ async def send_booster_welcome_message(member: discord.Member, channel: discord.
         else:
             await target_channel.send(content=f"{member.mention}", embed=embed)
         print(f"✅ Booster message sent for {member.name} in channel {target_channel.id}")
+        return True, None
     except Exception as e:
         print(f"❌ Error sending booster message for {member}: {e}")
+        return False, str(e)
 
 USER_TICKETS_FILE = "user_tickets.json"
 
@@ -6118,17 +6126,40 @@ async def searchup(ctx, member: discord.Member = None):
     
     await ctx.send(embed=embed, view=UserLookupView(member))
 
-@bot.command(name="testbooster")
-async def testbooster(ctx, member: discord.Member = None):
+@bot.command(name="testboost", aliases=["testbooster", "boostertest", "boosterpreview"])
+async def testboost(ctx, member: discord.Member = None):
     """Test the booster welcome message in the booster channel (JMod and above)."""
-    if not is_jmod_or_above(ctx.author):
-        await ctx.send("❌ You don't have permission to use this command.")
-        return
-    target = member or ctx.author
-    channel = ctx.guild.get_channel(BOOSTER_CHANNEL_ID) or ctx.channel
-    await send_booster_welcome_message(target, channel=channel, bypass_cooldown=True)
-    if channel != ctx.channel:
-        await ctx.send(f"✅ Sent test booster message for {target.mention} in {channel.mention}!")
+    try:
+        # Check permissions: owner, administrator, staff role, or jmod and above
+        is_allowed = (
+            getattr(ctx.author, 'id', None) == getattr(ctx.guild, 'owner_id', 0)
+            or getattr(ctx.author.guild_permissions, 'administrator', False)
+            or any(getattr(r, 'id', 0) == STAFF_ROLE_ID for r in getattr(ctx.author, 'roles', []))
+            or is_jmod_or_above(ctx.author)
+        )
+        if not is_allowed:
+            await ctx.send("❌ You don't have permission to use this command (Requires JMod or above).")
+            return
+
+        target = member or ctx.author
+        channel = ctx.guild.get_channel(BOOSTER_CHANNEL_ID)
+        if not channel:
+            try:
+                channel = await ctx.guild.fetch_channel(BOOSTER_CHANNEL_ID)
+            except Exception:
+                channel = None
+
+        send_channel = channel or ctx.channel
+        success, err = await send_booster_welcome_message(target, channel=send_channel, bypass_cooldown=True)
+        if success:
+            if send_channel != ctx.channel:
+                await ctx.send(f"✅ Sent test booster message for {target.mention} in {send_channel.mention}!")
+            else:
+                await ctx.send(f"✅ Sent test booster message for {target.mention} here (booster channel `{BOOSTER_CHANNEL_ID}` not found).")
+        else:
+            await ctx.send(f"❌ Failed to send booster message: {err}")
+    except Exception as e:
+        await ctx.send(f"❌ Error executing testboost: {e}")
 
 
 @bot.command()
