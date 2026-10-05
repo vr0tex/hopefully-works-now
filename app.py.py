@@ -242,10 +242,11 @@ def get_asset_path(filename):
 async def set_bot_avatar_from_asset(bot):
     """Use the repo's Paradox asset as the current bot avatar when available."""
     avatar_candidates = [
-        "naruto.webp",
         "bot_avatar.png",
         "bot_avatar.jpg",
         "bot_avatar.jpeg",
+        "bot_avatar.webp",
+        "naruto.webp",
         "bot_profile.png",
         "profile.png",
         "setup_header.png",
@@ -2226,10 +2227,11 @@ def get_asset_path(filename):
 async def set_bot_avatar_from_asset(bot):
     """Use the repo's Paradox asset as the current bot avatar when available."""
     avatar_candidates = [
-        "naruto.webp",
         "bot_avatar.png",
         "bot_avatar.jpg",
         "bot_avatar.jpeg",
+        "bot_avatar.webp",
+        "naruto.webp",
         "bot_profile.png",
         "profile.png",
         "setup_header.png",
@@ -3981,6 +3983,7 @@ class ParadoxBot(commands.Bot):
     async def setup_hook(self):
         await self.tree.sync()
         self.add_view(ParadoxTicketView())
+        self.add_view(CarryTicketPanelView())
         self.add_view(HelperApplicationView())
         self.add_view(ApplicationReviewView())
         self.add_view(PingRoleView())
@@ -4445,37 +4448,53 @@ async def testwelcome(ctx):
 
     await ctx.send("✅ Welcome preview sent to the welcome channel.")
 
+class CarryTicketPanelView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Open Carry Ticket", style=discord.ButtonStyle.blurple, emoji="✨", custom_id="paradox_open_carry")
+    async def open_carry_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = V2Embed(
+            title=f"{Emojis.GAME} Select a Game",
+            description="Choose the game you need help with to continue your carry request."
+        )
+        await interaction.response.send_message(embed=embed, view=ParadoxTicketView(), ephemeral=True)
+
+
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def setup(ctx):
-    embed = V2Embed()
+    embed = V2Embed(title=f"✨ PARADOX CARRY SYSTEM")
     file = None
-    setup_header_path = get_asset_path("naruto.webp") or get_asset_path("setup_header.png")
-    if os.path.exists(setup_header_path):
-        file = discord.File(setup_header_path, filename="header.png")
-        embed.set_image(url="attachment://header.png")
-    
     embed.description = (
         f"**@everyone**\n\n"
-        f"**{Emojis.CARRY} [ PARADOX CARRY REQUESTS ]**\n\n"
-        f"**| {Emojis.INFO} Information**\n"
-        f"**| Welcome to the Elite Carry Service!**\n"
-        f"**| Your place for fast and professional carries.**\n\n"
-        f"**| {Emojis.GAME} Supported Games**\n"
-        f"```diff\n"
-        f"+ Anime Last Stand (ALS)\n"
-        f"+ Anime Vanguards (AV)\n"
-        f"+ Anime Expeditions (AE)\n"
-        f"+ Dungeon Quest Reborn (DQR)\n"
-        f"+ and many more soon...\n"
-        f"```\n"
-        f"**| {Emojis.ARROW} How to start?**\n"
-        f"**| Select your game from the menu below!**\n\n"
-        f"▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"
+        f"**PARADOX CARRY INTERFACE**\n"
+        f"Fast, reliable carries from the Paradox team.\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📋 **ACCESS REQUIREMENTS**\n"
+        f"💬 30 messages in the last 24 hours required\n"
+        f"✨ PRDX server tag reduces the requirement to 15 messages\n"
+        f"🚀 Server boosters bypass the message requirement\n"
+        f"📜 Opening a ticket means you acknowledge the ticket guidelines\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🎮 **AVAILABLE GAME CARRIES**\n"
+        f"{Emojis.ALS} Anime Last Stand\n"
+        f"{Emojis.AV} Anime Vanguards\n"
+        f"{Emojis.AE} Anime Expeditions\n"
+        f"{Emojis.DQR} Dungeon Quest Reborn\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"**Click the button below to open a Carry Ticket.**\n"
+        f"Select your game after clicking."
     )
     embed.set_footer(text="Paradox System • Premium Edition", icon_url=ctx.guild.icon.url if ctx.guild.icon else None)
-    
-    await ctx.send(file=file if file else None, embed=embed, view=ParadoxTicketView())
+
+    banner_path = get_asset_path("carry_banner.png") or get_asset_path("carry_banner.webp") or get_asset_path("all anime.webp")
+    if banner_path:
+        banner_filename = os.path.basename(banner_path)
+        file = discord.File(banner_path, filename=banner_filename)
+        embed.set_image(url=f"attachment://{banner_filename}")
+
+    await ctx.send(file=file, embed=embed, view=CarryTicketPanelView())
 
 @bot.command()
 @commands.has_permissions(administrator=True)
