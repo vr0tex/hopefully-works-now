@@ -1,5 +1,5 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timezone
@@ -2261,6 +2261,7 @@ GAME_ROLE_MAP = {
     "UTD": 1505300013604147332,
     "AE": 1541834030717075457,
     "DQR": 1548723005679599706,
+    "AZ": 1558196543784488990,
 }
 
 # CPU Optimization: Limit bot to 25% CPU usage (1 core out of 4)
@@ -2824,7 +2825,7 @@ class Emojis:
     INFO = "ℹ️"
     ARROW = "➔"
     LOCK = "🔒"
-    ALS = AC = AV = BL = ARX = ASTD = AOL = AE = DQR = "🎮"
+    ALS = AC = AV = BL = ARX = ASTD = AOL = AE = DQR = AZ = "🎮"
     CLAIM = UNCLAIM = REMIND = COMPLETE = LINK = PLUS = DIAMOND = GOAL = STATUS = "🔹"
 
     @classmethod
@@ -2834,10 +2835,11 @@ class Emojis:
             'AV': {'av', 'animevanguards'},
             'AE': {'ae', 'animeexpeditions'},
             'DQR': {'dqr', 'dungeonquest', 'dungeonquestreborn', 'dungoenquest'},
+            'AZ': {'az', 'animezero'},
         }
         keys = [
             'CARRY', 'VOUCH', 'STAFF', 'TICKET', 'SUCCESS', 'WAITING', 'GAME', 'USER', 'INFO', 'ARROW', 'LOCK',
-            'ALS', 'AC', 'AV', 'BL', 'ARX', 'ASTD', 'AOL', 'AE', 'DQR',
+            'ALS', 'AC', 'AV', 'BL', 'ARX', 'ASTD', 'AOL', 'AE', 'DQR', 'AZ',
             'CLAIM', 'UNCLAIM', 'REMIND', 'COMPLETE', 'LINK', 'PLUS', 'DIAMOND', 'GOAL', 'STATUS'
         ]
         
@@ -2862,7 +2864,7 @@ class Emojis:
                 else:
                     # Fallback to a generic emoji instead of :p:
                     generic_fallbacks = {
-                        'ALS': "🎮", 'AC': "🎮", 'AV': "🎮", 'BL': "🎮", 'ARX': "🎮", 'ASTD': "🎮", 'AOL': "🎮", 'AE': "🎮", 'DQR': "🎮",
+                        'ALS': "🎮", 'AC': "🎮", 'AV': "🎮", 'BL': "🎮", 'ARX': "🎮", 'ASTD': "🎮", 'AOL': "🎮", 'AE': "🎮", 'DQR': "🎮", 'AZ': "🎮",
                         'CARRY': "⚔️", 'VOUCH': "⭐", 'STAFF': "🛡️", 'TICKET': "🎫", 'SUCCESS': "✅", 'WAITING': "⏳", 'GAME': "🎮", 'USER': "👤", 'INFO': "ℹ️", 'ARROW': "➔", 'LOCK': "🔒",
                         'CLAIM': "🔹", 'UNCLAIM': "🔹", 'REMIND': "🔹", 'COMPLETE': "✅", 'LINK': "🔗", 'PLUS': "➕", 'DIAMOND': "💎", 'GOAL': "🎯", 'STATUS': "📊"
                     }
@@ -3106,7 +3108,38 @@ class TicketControlView(discord.ui.View):
 
     @discord.ui.button(label="Remind User", style=discord.ButtonStyle.secondary, custom_id="remind_button")
     async def remind_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message(f"🔔 {interaction.user.mention} is waiting for you!", ephemeral=False)
+        embed = interaction.message.embeds[0]
+        customer_id = self._get_user_id(embed)
+        game = self._get_game(interaction, embed)
+        
+        if interaction.user.id == customer_id:
+            global remind_cooldowns
+            if 'remind_cooldowns' not in globals():
+                globals()['remind_cooldowns'] = {}
+            last_used = remind_cooldowns.get(interaction.channel.id)
+            if last_used and (datetime.now() - last_used).total_seconds() < 1800:
+                remaining = 1800 - int((datetime.now() - last_used).total_seconds())
+                await interaction.response.send_message(f"❌ You can use this again in {remaining // 60} minutes.", ephemeral=True)
+                return
+            
+            remind_cooldowns[interaction.channel.id] = datetime.now()
+            
+            status_idx = self._get_status_index(embed)
+            status_field = embed.fields[status_idx].value
+            match = re.search(r'<@!?(\d+)>', status_field)
+            if match:
+                helper_id = int(match.group(1))
+                await interaction.response.send_message(f"🔔 <@{helper_id}>, {interaction.user.mention} is waiting for you!", ephemeral=False)
+            else:
+                specific_role_id = GAME_ROLE_MAP.get(game.upper())
+                specific_role = interaction.guild.get_role(specific_role_id) if specific_role_id else None
+                ping_text = specific_role.mention if specific_role else "Helpers"
+                await interaction.response.send_message(f"🔔 {ping_text}, {interaction.user.mention} is waiting!", ephemeral=False)
+        else:
+            if customer_id:
+                await interaction.response.send_message(f"🔔 <@{customer_id}>, your helper {interaction.user.mention} is waiting for you!", ephemeral=False)
+            else:
+                await interaction.response.send_message(f"🔔 The customer is waiting for you!", ephemeral=False)
 
     @discord.ui.button(label="Complete Run", style=discord.ButtonStyle.green, custom_id="complete_button")
     async def complete_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -3321,6 +3354,7 @@ class ParadoxTicketView(discord.ui.View):
             discord.SelectOption(label="Anime Vanguards (AV)", emoji=Emojis.AV, value="AV"),
             discord.SelectOption(label="Anime Expeditions (AE)", emoji=Emojis.AE, value="AE"),
               discord.SelectOption(label="Dungeon Quest Reborn (DQR)", emoji=Emojis.DQR, value="DQR"),
+              discord.SelectOption(label="Anime Zero (AZ)", emoji=Emojis.AZ, value="AZ"),
         ]
         self.select = discord.ui.Select(
             custom_id="paradox_selector",
@@ -3333,9 +3367,13 @@ class ParadoxTicketView(discord.ui.View):
     async def select_callback(self, interaction: discord.Interaction):
         try:
             # Check messages requirement (exempt admins, staff, and boosters)
+            global messages_requirement_enabled
+            if 'messages_requirement_enabled' not in globals():
+                globals()['messages_requirement_enabled'] = True
+                
             is_staff = interaction.user.guild_permissions.administrator or any(role.id == STAFF_ROLE_ID for role in interaction.user.roles)
             is_booster = is_booster_member(interaction.user)
-            if not is_staff and not is_booster:
+            if not is_staff and not is_booster and globals()['messages_requirement_enabled']:
                 msg_count = get_message_count_last_24h(interaction.user.id)
                 has_tag = has_server_tag(interaction.user)
                 required_messages = 15 if has_tag else 30
@@ -3412,6 +3450,7 @@ class HelperApplicationView(discord.ui.View):
             discord.SelectOption(label="Anime Vanguards (AV)", emoji=Emojis.AV, value="AV"),
             discord.SelectOption(label="Anime Expeditions (AE)", emoji=Emojis.AE, value="AE"),
               discord.SelectOption(label="Dungeon Quest Reborn (DQR)", emoji=Emojis.DQR, value="DQR"),
+              discord.SelectOption(label="Anime Zero (AZ)", emoji=Emojis.AZ, value="AZ"),
         ]
         self.select = discord.ui.Select(
             custom_id="helper_selector",
@@ -3425,7 +3464,7 @@ class HelperApplicationView(discord.ui.View):
         game_id = self.select.values[0]
         game_name = [opt.label for opt in self.select.options if opt.value == game_id][0]
         
-        if game_id in ["ALS", "AV", "AE", "DQR"]:
+        if game_id in ["ALS", "AV", "AE", "DQR", "AZ"]:
             # Start Application Flow
             await interaction.response.send_message(f"✅ **Application Started!** Please check your DMs to proceed.", ephemeral=True)
             asyncio.create_task(start_application(interaction.user, game_id, game_name))
@@ -3454,7 +3493,8 @@ class ApplicationReviewView(discord.ui.View):
             "Anime Last Stand (ALS)": 1500199051952656578,
             "Anime Vanguards (AV)": 1500198955940712468,
             "Anime Expeditions (AE)": 1541834030717075457,
-              "Dungeon Quest Reborn (DQR)": 1548723005679599706
+              "Dungeon Quest Reborn (DQR)": 1548723005679599706,
+              "Anime Zero (AZ)": 1558196543784488990
         }
 
     def parse_data(self, interaction: discord.Interaction):
@@ -3675,6 +3715,12 @@ async def start_application(user: discord.Member, game_id: str, game_name: str):
             {"text": "5. Someone asks you to give them free items, rare gear, or admin privileges. How do you respond?", "type": "text"},
             {"text": "6. Briefly explain how item rarities and progression work.", "type": "text"},
         ]
+    elif game_id == "AZ":
+        questions = [
+            {"text": "1. Whats your level", "type": "text"},
+            {"text": "2. What style are you using", "type": "text"},
+            {"text": "3. Can you solo everything", "type": "yesno"},
+        ]
     else:
         return
 
@@ -3847,11 +3893,14 @@ ONLINE_HELPERS_MESSAGE_ID = None  # Will store the message ID of the online help
 ONLINE_HELPERS_CHANNEL_ID = 1544262915581022279  # Default channel for online helpers list
 ONLINE_HELPERS_CONFIG_FILE = os.path.join(BASE_DIR, "online_helpers_config.json")
 
+messages_requirement_enabled = True
+
 GAME_HELPER_ROLES = {
     "ALS": 1500199147859476604,
     "AV": 1500198955940712468,
     "UTD": 1505300013604147332,
     "AE": 1541834030717075457,
+    "AZ": 1558196543784488990,
 }
 
 def load_online_helpers_config():
@@ -3922,14 +3971,16 @@ async def create_online_helpers_embed(guild: discord.Guild):
         "ALS": "⚔️",
         "AV": "🎯",
         "UTD": "🗼",
-        "AE": "🌟"
+        "AE": "🌟",
+        "AZ": "🌀"
     }
     
     game_names = {
         "ALS": "Anime Last Stand",
         "AV": "Anime Vanguards",
         "AE": "Anime Expeditions",
-        "DQR": "Dungeon Quest Reborn"
+        "DQR": "Dungeon Quest Reborn",
+        "AZ": "Anime Zero"
     }
     
     # Calculate total online helpers
@@ -3941,7 +3992,7 @@ async def create_online_helpers_embed(guild: discord.Guild):
         color=discord.Color.green()
     )
     
-    for game in ["ALS", "AV", "AE", "DQR"]:
+    for game in ["ALS", "AV", "AE", "DQR", "AZ"]:
         helpers = online_helpers.get(game, [])
         emoji = game_emojis.get(game, "•")
         name = game_names.get(game, game)
@@ -4122,6 +4173,9 @@ class ParadoxBot(commands.Bot):
         WELCOME_ENABLED = load_welcome_settings()
         print(f"Bot logged in as {self.user}")
         await set_bot_avatar_from_asset(self)
+        
+        if not auto_close_tickets.is_running():
+            auto_close_tickets.start()
         
         # Send Online Message (async, non-blocking)
         try:
@@ -6323,6 +6377,44 @@ async def slash_vouches(interaction: discord.Interaction, user: discord.Member):
         await interaction.followup.send(embed=embed, ephemeral=True)
     except Exception as e:
         await interaction.followup.send(f"❌ Error fetching vouches: {e}", ephemeral=True)
+@tasks.loop(minutes=30)
+async def auto_close_tickets():
+    await bot.wait_until_ready()
+    try:
+        for guild in bot.guilds:
+            category = guild.get_channel(CATEGORY_ID)
+            if not category:
+                continue
+            for channel in category.text_channels:
+                # Assuming tickets have a dash like GAME-username
+                if '-' in channel.name:
+                    age = datetime.now(timezone.utc) - channel.created_at
+                    if age.total_seconds() > 4 * 3600:
+                        # Message the non-bot users
+                        for target, overwrite in channel.overwrites.items():
+                            if isinstance(target, discord.Member) and not target.bot:
+                                try:
+                                    await target.send(f"Your ticket **{channel.name}** in {guild.name} was automatically closed because it has been open for more than 4 hours.")
+                                except:
+                                    pass
+                        await channel.delete(reason="Auto closed after 4 hours")
+    except Exception as e:
+        print(f"Error in auto_close_tickets: {e}")
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def messagesoff(ctx):
+    global messages_requirement_enabled
+    messages_requirement_enabled = False
+    await ctx.send("✅ Ticket message requirement has been **DISABLED**.")
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def messageson(ctx):
+    global messages_requirement_enabled
+    messages_requirement_enabled = True
+    await ctx.send("✅ Ticket message requirement has been **ENABLED**.")
+
 if __name__ == "__main__":
     if not TOKEN or TOKEN.lower().startswith("your_"):
         print("ERROR: DISCORD_TOKEN not found or is still using the example placeholder.")
